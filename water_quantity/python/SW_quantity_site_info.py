@@ -23,10 +23,10 @@ pd.options.display.max_columns = 100
 
 #-Authorship information-###################################################################
 __author__ = 'Wilco Terink'
-__copyright__ = 'Wilco Terink'
+__copyright__ = 'Environment Canterbury'
 __version__ = '1.0'
 __email__ = 'wilco.terink@ecan.govt.nz'
-__date__ ='January 2021'
+__date__ ='February 2021'
 ############################################################################################
 
 # CSV file to write output to
