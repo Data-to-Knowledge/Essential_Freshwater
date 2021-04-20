@@ -1,7 +1,9 @@
-NPS-FM-current-state
+Essential Freshwater
 ================
 
-Scripts related to Environment Canterbury's current state of monitoring networks for the National Policy Statement for Freshwater Management (NPS-FM).
+On 5 August 2020, central government gazetted a new "Essential Freshwater" package of regulatory instruments designed to "stop further degradation of freshwater" and "improve water quality within five years". The package included a new National Policy Statement for Freshwater Management (NPS-FM 2020), new National Environmental Standards for Freshwater (NES-F) and Stock Exclusion Regulations. All three instruments came into force on 3 September 2020. 
+
+This repository contains scripts related to the ECan science work on the "Essential Freshwater" instrument.
 
    
 Copyright
