@@ -81,7 +81,7 @@ __date__ = 'May 2021'
 ############################################################################################
 
 # CSV file to write output to
-outF = r'C:\Active\Projects\Essential_Freshwater\data\USM\USM_site_data_summary_v2.csv'
+outF = r'C:\Active\Projects\Essential_Freshwater\data\USM\Water_Quantity_site_summary.csv'
 
 # CSV file with Hydstra site summary to read
 hydstra_csv = r'C:\Active\Projects\Essential_Freshwater\data\USM\hydstra_site_summary_filtered.csv'
@@ -209,7 +209,6 @@ df_final = pd.merge(df_final, USM_site_df, how='left', on='Site')
 df_final.insert(1, 'name', df_final.Name)
 df_final.drop('Name', axis=1, inplace=True)
 df_final.rename(columns={'name': 'Name'}, inplace=True)
-df_final.to_csv(outF, index=False)
 
 # Remove duplicate sites for abstractions. Keep river sites if one site has both aquifer as well as river. Technically there can only be one.
 df1 = df_final.loc[df_final.MeasurementType == 'abstraction']
@@ -236,11 +235,14 @@ df_new = None; df1 = None; df2 = None; del df1, df2, df_new
 
 
 # Label the sites to primary, secondary, and other and write to csv-file
+hydstra_secondary_flow_sites = list(hydstra_secondary_flow_sites.keys())
+hydstra_secondary_flow_sites = [str(i) for i in hydstra_secondary_flow_sites]
 df_final['Primary, Secondary, or Other'] = np.nan
-df_final['Rec length'] = (df_final['ToDate'] - df_final['FromDate']) / np.timedelta64(1, 'Y')
+df_final['Rec length [years]'] = (df_final['ToDate'] - df_final['FromDate']) / np.timedelta64(1, 'Y')
 df_final.loc[df_final.MeasurementType.isin(['precipitation', 'abstraction']), 'Primary, Secondary, or Other'] = 'other'
-df_final.loc[(df_final.MeasurementType.isin(['flow', 'water level'])) & (df_final['Rec length'] >= 5) & (df_final.ToDate.dt.year >= 2020) & (df_final.CollectionType == 'recorder'), 'Primary, Secondary, or Other'] = 'primary'
+df_final.loc[(df_final.MeasurementType.isin(['flow', 'water level'])) & (df_final['Rec length [years]'] >= 5) & (df_final.ToDate.dt.year >= 2020) & (df_final.CollectionType == 'recorder'), 'Primary, Secondary, or Other'] = 'primary'
 df_final.loc[pd.isna(df_final['Primary, Secondary, or Other']), 'Primary, Secondary, or Other'] = 'secondary'
-df_final.loc[df_final.Site.isin(list(hydstra_secondary_flow_sites.keys())), 'Primary, Secondary, or Other'] = 'secondary'
+df_final.loc[df_final.Site.isin(hydstra_secondary_flow_sites), 'Primary, Secondary, or Other'] = 'secondary'
+df_final['Rec length [years]'] = df_final['Rec length [years]'].round(decimals=2)
 df_final.to_csv(outF, index=False)
 
