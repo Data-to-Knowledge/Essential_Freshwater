@@ -182,7 +182,7 @@ IndicatorResults_df = IndicatorResults_df.append(NitrateMax_df)
 Nitrate Nitrogen 5-yr median
 '''
 # Start by only considering the nitrate nitrogen values
-NitrateMed_df = StatsData_df[(StatsData_df['Measurement'] == 'Nitrate Nitrogen')]
+NitrateMed_df = StatsData_df[(StatsData_df['Measurement'] == 'Nitrate Nitrogen')].reset_index(drop=True)
 
 # The 5-yr median should have all years evenly weighted, all quarters within a
 # year evenly weighted, all months within a quarter evenly weighted, and all days
@@ -190,9 +190,9 @@ NitrateMed_df = StatsData_df[(StatsData_df['Measurement'] == 'Nitrate Nitrogen')
 # having significant impacts on the result
 
 # Add quarter, month, and day columns
-NitrateMed_df.loc[:,'Quarter'] = NitrateMed_df['DateTime'].dt.quarter
-NitrateMed_df.loc[:,'Month'] = NitrateMed_df['DateTime'].dt.month
-NitrateMed_df.loc[:,'Day'] = NitrateMed_df['DateTime'].dt.dayofyear
+NitrateMed_df['Quarter'] = NitrateMed_df['DateTime'].dt.quarter
+NitrateMed_df['Month'] = NitrateMed_df['DateTime'].dt.month
+NitrateMed_df['Day'] = NitrateMed_df['DateTime'].dt.dayofyear
 
 # Take median of values taken on the same day at the same site
 Median = NitrateMed_df.groupby(['Site','HydroYear','Day'])['Curated'].median().reset_index().rename(columns={'Curated':'DayMedian'})
