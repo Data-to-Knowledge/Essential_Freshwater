@@ -242,7 +242,10 @@ NitrateMed_df['Grade'] = pd.cut(NitrateMed_df['Numeric'],bins,labels=['A','B','C
 NitrateMed_df['Measurement'] = 'Nitrate Nitrogen'
 NitrateMed_df['Units'] = 'mg/L'
 NitrateMed_df['Indicator'] = 'Nitrate Nitrogen 5-yr Median'
+# For median values below 0.1, report result as <0.1
 NitrateMed_df['Censor'] = np.where(NitrateMed_df['Numeric'] < 0.1,'<',np.nan)
+NitrateMed_df['Numeric'] = np.where(NitrateMed_df['Censor']=='<',0.1,round(NitrateMed_df['Numeric'],2))
+NitrateMed_df['Numeric'] = np.where(NitrateMed_df['Numeric']>=2,round(NitrateMed_df['Numeric'],1),NitrateMed_df['Numeric'])
 NitrateMed_df['Result'] = NitrateMed_df['Numeric'].astype(str)
 NitrateMed_df['Result'] = np.where(NitrateMed_df['Censor']=='<','<0.1',NitrateMed_df['Result'])
 
