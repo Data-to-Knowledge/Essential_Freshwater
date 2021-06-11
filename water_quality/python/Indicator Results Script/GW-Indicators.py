@@ -243,16 +243,19 @@ NitrateMed_df['Measurement'] = 'Nitrate Nitrogen'
 NitrateMed_df['Units'] = 'mg/L'
 NitrateMed_df['Indicator'] = 'Nitrate Nitrogen 5-yr Median'
 # For median values below 0.1, report result as <0.1
+# Set censor component of values <0.1 as <
 NitrateMed_df['Censor'] = np.where(NitrateMed_df['Numeric'] < 0.1,'<',np.nan)
+# Set numeric component of values <0.1 as 0.1 and round others to two decimals
 NitrateMed_df['Numeric'] = np.where(NitrateMed_df['Censor']=='<',0.1,round(NitrateMed_df['Numeric'],2))
+# For values greater than 2 mg/L, round to a single decimal
 NitrateMed_df['Numeric'] = np.where(NitrateMed_df['Numeric']>=2,round(NitrateMed_df['Numeric'],1),NitrateMed_df['Numeric'])
+# Convert result to a string
 NitrateMed_df['Result'] = NitrateMed_df['Numeric'].astype(str)
+# Where the result is censored, change the text result to <0.1
 NitrateMed_df['Result'] = np.where(NitrateMed_df['Censor']=='<','<0.1',NitrateMed_df['Result'])
 
 # Append to indicator results table
 IndicatorResults_df = IndicatorResults_df.append(NitrateMed_df)
-
-
 
 ##############################################################################
 '''
