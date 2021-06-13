@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Python Script to generate indicator results for GW Nitrate-nitrogen Annual Max
+Python Script to generate indicator results for GW indicators
 
 Created on Fri Jun 6 09:08:13 2021
 
@@ -30,7 +30,9 @@ hts_sites_list = sorted(ws.site_list(base_url,hts).SiteName.tolist(),key=str.low
 hts_sites_list = [site for site in hts_sites_list if '/' in site]
 
 ##############################################################################
-
+'''
+Import list of SoE sample project codes
+'''
 # Import set of SoE monitoring project codes
 with open('GWSoEProjectCodes.csv', 'r', encoding='utf-8-sig') as f:
     project_codes = [row[0] for row in csv.reader(f)]
@@ -38,7 +40,9 @@ with open('GWSoEProjectCodes.csv', 'r', encoding='utf-8-sig') as f:
 f.close()
 
 ##############################################################################
-
+'''
+Format WQ table to match view in Hilltop Manager on site basis
+'''
 # Initiate empty list of dataframes
 WQData = []
 #Extract Nitrate Nitrogen and E.coli data with measurement and sample parameters
@@ -83,7 +87,11 @@ WQData_df = pd.concat(WQData,sort = False)
 WQData_df = WQData_df.reindex(['Sample Parameters']+measurements,axis=1,level=0)
 
 ##############################################################################
-
+'''
+Tailor the data to be used in indicators by project code.
+Do not consider results with * result.
+Do not consider nitrate nitrogen data marked as 0 or <0.
+'''
 # Generate data that has been filter by project code
 SoEData_df = WQData_df[WQData_df['Sample Parameters','Project'].isin(project_codes)].drop('Sample Parameters',axis=1)
 # Take relevant data and append to StatsData_df
