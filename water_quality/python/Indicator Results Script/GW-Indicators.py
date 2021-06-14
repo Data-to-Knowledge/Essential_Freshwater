@@ -134,7 +134,7 @@ StatsData_df['HydroYear'] = np.where(StatsData_df.DateTime.dt.month <= 6,
 
 # Split censor component from numeric component of observation
 # and calculate curated value
-StatsData_df['Censor'] = np.where(StatsData_df['Observation'].str.startswith(tuple(['<','>'])),StatsData_df['Observation'].str[0],np.nan)
+StatsData_df['Censor'] = np.where(StatsData_df['Observation'].str.startswith(tuple(['<','>'])),StatsData_df['Observation'].str[0],None)
 StatsData_df['Numeric'] = StatsData_df['Observation'].map(lambda x: x.replace('<','').replace('>',''))
 StatsData_df['Numeric'] = pd.to_numeric(StatsData_df['Numeric'])
 StatsData_df['Curated'] = StatsData_df['Numeric']
@@ -166,7 +166,7 @@ NitrateMax_df = NitrateMax_df[NitrateMax_df['Max']==NitrateMax_df['Curated']]
 # the more appropriate (i.e., if 0.05 and <0.1 are both in the time series,
 # both have a curated value of 0.05. Use censor ranking to choose which should
 # be returned as the maximum.)
-NitrateMax_df['CensorRank'] = NitrateMax_df['Censor'].map({'>':1,np.nan:2,'<':3})
+NitrateMax_df['CensorRank'] = NitrateMax_df['Censor'].map({'>':1,None:2,'<':3})
 # Sort values based on the censor ranking
 NitrateMax_df = NitrateMax_df.sort_values(by='CensorRank',ascending=True)
 # Drop duplicates keeping the highest censor rank
@@ -252,7 +252,7 @@ NitrateMed_df['Units'] = 'mg/L'
 NitrateMed_df['Indicator'] = 'Nitrate Nitrogen 5-yr Median'
 # For median values below 0.1, report result as <0.1
 # Set censor component of values <0.1 as <
-NitrateMed_df['Censor'] = np.where(NitrateMed_df['Numeric'] < 0.1,'<',np.nan)
+NitrateMed_df['Censor'] = np.where(NitrateMed_df['Numeric'] < 0.1,'<',None)
 # Set numeric component of values <0.1 as 0.1 and round others to two decimals
 NitrateMed_df['Numeric'] = np.where(NitrateMed_df['Censor']=='<',0.1,round(NitrateMed_df['Numeric'],2))
 # For values greater than 2 mg/L, round to a single decimal
@@ -308,7 +308,7 @@ Ecoli5yrEx_df['Grade'] = pd.cut(Ecoli5yrEx_df['Result'],bins,labels=['A','B','C'
 Ecoli5yrEx_df['Measurement'] = 'E. coli'
 Ecoli5yrEx_df['Units'] = 'MPN/100mL'
 Ecoli5yrEx_df['Indicator'] = 'E. coli 5-yr percent exceedances'
-Ecoli5yrEx_df['Censor'] = np.nan
+Ecoli5yrEx_df['Censor'] = None
 Ecoli5yrEx_df['Numeric'] = Ecoli5yrEx_df['Result']
 Ecoli5yrEx_df['Result'] = Ecoli5yrEx_df['Result'].astype(str)
 # Append to indicator results table
