@@ -166,7 +166,7 @@ NitrateMax_df = NitrateMax_df[NitrateMax_df['Max']==NitrateMax_df['Curated']]
 # the more appropriate (i.e., if 0.05 and <0.1 are both in the time series,
 # both have a curated value of 0.05. Use censor ranking to choose which should
 # be returned as the maximum.)
-NitrateMax_df['CensorRank'] = NitrateMax_df['Censor'].map({'>':1,None:2,'<':3})
+NitrateMax_df['CensorRank'] = NitrateMax_df['Censor'].map({'<':1,None:2})
 # Sort values based on the censor ranking
 NitrateMax_df = NitrateMax_df.sort_values(by='CensorRank',ascending=True)
 # Drop duplicates keeping the highest censor rank
