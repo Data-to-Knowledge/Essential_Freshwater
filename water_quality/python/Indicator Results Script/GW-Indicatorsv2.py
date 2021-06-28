@@ -105,9 +105,9 @@ Unstacked_df = Frequency_df['Frequency'].unstack(level=2)
 Initiate Indicator Dataframe
 '''
 
-IndicatorResults_df = pd.DataFrame(columns=['Site','Measurement','Units','Indicator','HydroYear','Result','Censor','Numeric','Range','Grade','Values','Frequency'])
+IndicatorResults_df = pd.DataFrame(columns=['Site','Measurement','Units','Indicator','HydroYear','Result','Censor','Numeric','GradeRange','Grade','SamplesOrIntervals','Frequency'])
 IndicatorResults_df['HydroYear'] = IndicatorResults_df['HydroYear'].astype(int)
-IndicatorResults_df['Values'] = IndicatorResults_df['Values'].astype(int)
+IndicatorResults_df['SamplesOrIntervals'] = IndicatorResults_df['SamplesOrIntervals'].astype(int)
 
 ##############################################################################
 '''
@@ -121,7 +121,7 @@ indicator_df = sort_censors(StatsData_df[StatsData_df['Measurement']==measuremen
 # Name indicator
 indicator_df['Indicator'] = 'Nitrate Nitrogen Annual Max'
 # Count number of samples collected in Hydroyear
-indicator_df = pd.merge(indicator_df,indicator_df.groupby(['Site','HydroYear']).size().rename('Values'),on=['Site','HydroYear'],how='outer')
+indicator_df = pd.merge(indicator_df,indicator_df.groupby(['Site','HydroYear']).size().rename('SamplesOrIntervals'),on=['Site','HydroYear'],how='outer')
 # Set sample frequency as 'All' to indicate all samples are used
 indicator_df['Frequency'] = 'All'
 # Keep maximum value for each hydro year
@@ -130,9 +130,9 @@ indicator_df = indicator_df.drop_duplicates(subset=['Site','HydroYear'],keep='fi
 indicator_df = indicator_df.rename(columns={'Observation':'Result'}).drop(columns=['DateTime'])
 # Sort by Site and hydroyear
 indicator_df = indicator_df.sort_values(by=['Site','HydroYear'],ascending=True)
-# Set bins for the indicator grades and range
+# Set bins for the indicator grades and grade range
 bins = [0,1,5.65,11.3,np.inf]
-indicator_df['Range'] = pd.cut(indicator_df['Numeric'],bins,labels=['0-1','>1-5.65','>5.65-11.3','>11.3'])
+indicator_df['GradeRange'] = pd.cut(indicator_df['Numeric'],bins,labels=['0-1','>1-5.65','>5.65-11.3','>11.3'])
 indicator_df['Grade'] = pd.cut(indicator_df['Numeric'],bins,labels=['A','B','C','D'])
 # Append to indicator results table
 IndicatorResults_df = IndicatorResults_df.append(indicator_df)
@@ -178,7 +178,7 @@ indicator_df[['Samples5yr','Detections5yr']] = indicator_df.groupby(['Site']).ro
 # Calculate the percentage by dividing the exceedances by the samples and multiply by 100.
 indicator_df['Result'] = round(indicator_df['Detections5yr']/indicator_df['Samples5yr']*100,2)
 # Remove unneeded columns, reset index, and set hydro year data type to int
-indicator_df = indicator_df.drop(columns=['AnnualSamples','AnnualDetections','Detections5yr']).rename(columns={'Samples5yr':'Values'})
+indicator_df = indicator_df.drop(columns=['AnnualSamples','AnnualDetections','Detections5yr']).rename(columns={'Samples5yr':'SamplesOrIntervals'})
 indicator_df = indicator_df.dropna().reset_index()
 indicator_df['HydroYear'] = indicator_df['HydroYear'].astype(int)
 # Add columns to complete information for appending to full indicator results
@@ -191,7 +191,7 @@ indicator_df['Frequency'] = 'Daily'
 indicator_df['Censor'] = None
 # Set bins for the indicator grades and add grade column
 bins = [-0.01,5,25,50,100]
-indicator_df['Range'] = pd.cut(indicator_df['Numeric'],bins,labels=['0-5','>5-25','>25-50','>50'])
+indicator_df['GradeRange'] = pd.cut(indicator_df['Numeric'],bins,labels=['0-5','>5-25','>25-50','>50'])
 indicator_df['Grade'] = pd.cut(indicator_df['Numeric'],bins,labels=['A','B','C','D'])
 # Append to indicator results table
 IndicatorResults_df = IndicatorResults_df.append(indicator_df)
@@ -275,20 +275,20 @@ for year in range(indicator_df['HydroYear'].min(),indicator_df['HydroYear'].max(
     hydroyearstats['Numeric'].mask(hydroyearstats['Quarters5yr'] >= 16, hydroyearstats['Quarters5yrNumeric'], inplace=True)
     hydroyearstats['Numeric'].mask(hydroyearstats['Months5yr'] >= 48, hydroyearstats['Months5yrNumeric'], inplace=True)
     
-    hydroyearstats['Values'] = np.nan
-    hydroyearstats['Values'].mask(hydroyearstats['Years5yr'] >= 4, hydroyearstats['Years5yr'], inplace=True)
-    hydroyearstats['Values'].mask(hydroyearstats['Semesters5yr'] >= 8, hydroyearstats['Semesters5yr'], inplace=True)
-    hydroyearstats['Values'].mask(hydroyearstats['Quarters5yr'] >= 16, hydroyearstats['Quarters5yr'], inplace=True)
-    hydroyearstats['Values'].mask(hydroyearstats['Months5yr'] >= 48, hydroyearstats['Months5yr'], inplace=True)
+    hydroyearstats['SamplesOrIntervals'] = np.nan
+    hydroyearstats['SamplesOrIntervals'].mask(hydroyearstats['Years5yr'] >= 4, hydroyearstats['Years5yr'], inplace=True)
+    hydroyearstats['SamplesOrIntervals'].mask(hydroyearstats['Semesters5yr'] >= 8, hydroyearstats['Semesters5yr'], inplace=True)
+    hydroyearstats['SamplesOrIntervals'].mask(hydroyearstats['Quarters5yr'] >= 16, hydroyearstats['Quarters5yr'], inplace=True)
+    hydroyearstats['SamplesOrIntervals'].mask(hydroyearstats['Months5yr'] >= 48, hydroyearstats['Months5yr'], inplace=True)
     
-    hydroyearstats = hydroyearstats[['Site','Measurement','Units','HydroYear','Frequency','Censor','Numeric','Values']]
+    hydroyearstats = hydroyearstats[['Site','Measurement','Units','HydroYear','Frequency','Censor','Numeric','SamplesOrIntervals']]
     hydroyearstats = hydroyearstats.dropna(subset=['Frequency'])
     
     indicator_df2 = indicator_df2.append(hydroyearstats)
     
 # Set bins for the indicator grades and add grade column
 bins = [0,1,5.65,11.3,np.inf]
-indicator_df2['Range'] = pd.cut(indicator_df2['Numeric'],bins,labels=['0-1','>1-5.65','>5.65-11.3','>11.3'])
+indicator_df2['GradeRange'] = pd.cut(indicator_df2['Numeric'],bins,labels=['0-1','>1-5.65','>5.65-11.3','>11.3'])
 indicator_df2['Grade'] = pd.cut(indicator_df2['Numeric'],bins,labels=['A','B','C','D'])
 # Add columns to complete information for appending to full indicator results
 indicator_df2['Indicator'] = 'Nitrate Nitrogen 5-yr Median'
