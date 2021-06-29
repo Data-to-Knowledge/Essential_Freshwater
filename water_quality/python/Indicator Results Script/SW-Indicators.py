@@ -11,7 +11,7 @@ Created on Fri Jun 6 09:08:13 2021
 from hilltoppy import web_service as ws
 import pandas as pd
 import numpy as np
-from Functions import hilltop_data,stacked_data,sample_freq,sort_censors
+from Functions import hilltop_data,stacked_data,sample_freq,sort_censors,Hazen_percentile
 
 ##############################################################################
 '''
@@ -66,10 +66,10 @@ Stack measurement results and create Hydro Year, censor, and numeric values
 # Take relevant data and append to StatsData_df
 StatsData_df = stacked_data(WQData_df,measurements,units_dict)
 
-'''
-Consider removing negative values, 0 values, and values that seem to have unit
-conversion issues (see Chlorophyl-a results)
-'''
+
+StatsData_df = StatsData_df[StatsData_df['Numeric'] > 0.0]
+StatsData_df = StatsData_df[(StatsData_df['Measurement'] == 'Chlorophyll a (planktonic)')&(StatsData_df['Numeric'] < 0.01)]
+
 
 ##############################################################################
 '''
@@ -115,6 +115,60 @@ indicator_df = indicator_df.sort_values(by=['Site','HydroYear'],ascending=True)
 bins = [0,10,25,60,np.inf]
 indicator_df['GradeRange'] = pd.cut(indicator_df['Numeric'],bins,labels=['0-10','>10-25','>25-60','>60'])
 indicator_df['Grade'] = pd.cut(indicator_df['Numeric'],bins,labels=['A','B','C','D'])
+# Append to indicator results table
+IndicatorResults_df = IndicatorResults_df.append(indicator_df)
+
+##############################################################################
+'''
+Chlorophyll-a Annual Median indicator
+'''
+
+# Set measurement parameter
+measurement = 'Chlorophyll a (planktonic)'
+# Start by only considering the chlorophyll-a values
+indicator_df = StatsData_df[(StatsData_df['Measurement'] == measurement)].copy()
+
+# Duplicate samples are taken periodically and should not both be counted in
+# the median, reduce multiple samples collected in a day to a single value.
+# Additionally, no sites are regularly sampled more than monthly. Reduce multiple
+# samples collected within a month to a single value.
+
+indicator_df['Month'] = indicator_df['DateTime'].dt.month
+indicator_df['Day'] = indicator_df['DateTime'].dt.month*31 + indicator_df['DateTime'].dt.day
+
+# Obtain daily values by taking median of samples collected in a day
+indicator_df = Hazen_percentile(indicator_df,50,['Site','HydroYear','Day'],'Censor','Numeric','DayCensor','DayNumeric')
+# Drop unnecessary columns and duplicates
+indicator_df = indicator_df.drop(columns=['DateTime','Observation','Censor','Numeric']).drop_duplicates()
+
+# Obtain monthly values by taking median of samples collected within a month
+indicator_df = Hazen_percentile(indicator_df,50,['Site','HydroYear','Month'],'DayCensor','DayNumeric','MonthCensor','MonthNumeric')
+# Drop unnecessary columns and duplicates
+indicator_df = indicator_df.drop(columns=['Day','DayCensor','DayNumeric']).drop_duplicates()
+
+# Obtain annual values by taking median of monthly values collected within a year
+indicator_df = Hazen_percentile(indicator_df,50,['Site','HydroYear'],'MonthCensor','MonthNumeric','AnnualCensor','AnnualNumeric')
+
+indicator_df = pd.merge(indicator_df,indicator_df.groupby(['Site','HydroYear']).size().rename('Months'),on=['Site','HydroYear'],how='outer')
+indicator_df = indicator_df.drop(columns=['Month','MonthCensor','MonthNumeric']).drop_duplicates()
+indicator_df = indicator_df.rename(columns={'Months':'SamplesOrIntervals','AnnualNumeric':'Numeric','AnnualCensor':'Censor'})
+indicator_df['Frequency'] = 'Monthly'
+
+# Set bins for the indicator grades and add grade column
+bins = [0,2,5,12,np.inf]
+indicator_df['GradeRange'] = pd.cut(indicator_df['Numeric'],bins,labels=['0-2','>2-5','>5-12','>12'])
+indicator_df['Grade'] = pd.cut(indicator_df['Numeric'],bins,labels=['A','B','C','D'])
+
+
+# Add columns to complete information for appending to full indicator results
+indicator_df['Indicator'] = 'Chlorophyll-a Annual Median'
+indicator_df['Numeric'] = round(indicator_df['Numeric'],3)
+indicator_df['Numeric'].mask(indicator_df['Numeric']>=0.2,round(indicator_df['Numeric'],2),inplace=True)
+indicator_df['Numeric'].mask(indicator_df['Numeric']>=2,round(indicator_df['Numeric'],1),inplace=True)
+
+# Convert result to a string
+indicator_df['Result'] = indicator_df['Censor'].fillna('')+indicator_df['Numeric'].astype(str)
+
 # Append to indicator results table
 IndicatorResults_df = IndicatorResults_df.append(indicator_df)
 
