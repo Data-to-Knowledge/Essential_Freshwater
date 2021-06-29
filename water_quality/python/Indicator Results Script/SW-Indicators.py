@@ -77,7 +77,7 @@ For each hydro year, determine number of samples, days sampled, months sampled,
 and quarters sampled. From this, estimate a sampling frequency.
 '''
 
-Frequency_df = sample_freq(StatsData_df,semiannual=True)
+Frequency_df = sample_freq(StatsData_df,semiannual=False)
 # Use estimated frequency to create a table with one column for each year
 Unstacked_df = Frequency_df['Frequency'].unstack(level=2)
 
