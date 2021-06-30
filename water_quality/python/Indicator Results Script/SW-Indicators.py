@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Python Script to generate indicator results for GW indicators
+Python Script to generate indicator results for SW indicators
 
 Created on Fri Jun 6 09:08:13 2021
 
@@ -11,7 +11,7 @@ Created on Fri Jun 6 09:08:13 2021
 from hilltoppy import web_service as ws
 import pandas as pd
 import numpy as np
-from Functions import hilltop_data,stacked_data,sample_freq,sort_censors,Hazen_percentile
+from Functions import hilltop_data,stacked_data,sample_freq,sort_censors,Hazen_percentile,round_half_up
 
 ##############################################################################
 '''
@@ -68,7 +68,7 @@ StatsData_df = stacked_data(WQData_df,measurements,units_dict)
 
 
 StatsData_df = StatsData_df[StatsData_df['Numeric'] > 0.0]
-StatsData_df = StatsData_df[(StatsData_df['Measurement'] == 'Chlorophyll a (planktonic)')&(StatsData_df['Numeric'] < 0.01)]
+StatsData_df = StatsData_df[~((StatsData_df['Measurement'] == 'Chlorophyll a (planktonic)')&(StatsData_df['Numeric'] < 0.01))]
 
 
 ##############################################################################
@@ -150,24 +150,46 @@ indicator_df = indicator_df.drop(columns=['Day','DayCensor','DayNumeric']).drop_
 indicator_df = Hazen_percentile(indicator_df,50,['Site','HydroYear'],'MonthCensor','MonthNumeric','AnnualCensor','AnnualNumeric')
 
 indicator_df = pd.merge(indicator_df,indicator_df.groupby(['Site','HydroYear']).size().rename('Months'),on=['Site','HydroYear'],how='outer')
+tempdata = indicator_df[['Site','HydroYear','MonthCensor','MonthNumeric']].copy()
 indicator_df = indicator_df.drop(columns=['Month','MonthCensor','MonthNumeric']).drop_duplicates()
 indicator_df = indicator_df.rename(columns={'Months':'SamplesOrIntervals','AnnualNumeric':'Numeric','AnnualCensor':'Censor'})
 indicator_df['Frequency'] = 'Monthly'
+
+# Add columns to complete information for appending to full indicator results
+indicator_df['Indicator'] = 'Chlorophyll-a Annual Median'
+indicator_df['Numeric'] = indicator_df['Numeric'].apply(lambda x : round_half_up(x,1))
 
 # Set bins for the indicator grades and add grade column
 bins = [0,2,5,12,np.inf]
 indicator_df['GradeRange'] = pd.cut(indicator_df['Numeric'],bins,labels=['0-2','>2-5','>5-12','>12'])
 indicator_df['Grade'] = pd.cut(indicator_df['Numeric'],bins,labels=['A','B','C','D'])
 
+# Add potential new categories
+indicator_df['GradeRange'].cat.add_categories(new_categories=['0-5','0-12','>2-12'],inplace=True)
+indicator_df['Grade'].cat.add_categories(new_categories=['A/B','A/B/C','B/C'],inplace=True)
 
-# Add columns to complete information for appending to full indicator results
-indicator_df['Indicator'] = 'Chlorophyll-a Annual Median'
-indicator_df['Numeric'] = round(indicator_df['Numeric'],3)
-indicator_df['Numeric'].mask(indicator_df['Numeric']>=0.2,round(indicator_df['Numeric'],2),inplace=True)
-indicator_df['Numeric'].mask(indicator_df['Numeric']>=2,round(indicator_df['Numeric'],1),inplace=True)
+indicator_df = indicator_df.reset_index(drop=True)
 
 # Convert result to a string
 indicator_df['Result'] = indicator_df['Censor'].fillna('')+indicator_df['Numeric'].astype(str)
+
+# Find where result is censored and not A grade
+for i in indicator_df[(indicator_df['Grade']!='A')&(indicator_df['Censor']=='<')].index:
+    detect_below_median = tempdata[(tempdata['Site']==indicator_df.iloc[i]['Site'])&
+                 (tempdata['HydroYear']==indicator_df.iloc[i]['HydroYear'])&
+                 (tempdata['MonthNumeric'] < indicator_df.iloc[i]['Numeric'])&
+                 (tempdata['MonthCensor']!='<')]['MonthNumeric'].max()
+    if detect_below_median <= 2.0:
+        if indicator_df.iloc[i]['Grade'] == 'B':
+            indicator_df.at[i,'Grade'] = 'A/B'
+            indicator_df.at[i,'GradeRange'] = '0-5'
+        elif indicator_df.iloc[i]['Grade'] == 'C':
+            indicator_df.at[i,'Grade'] = 'A/B/C'
+            indicator_df.at[i,'GradeRange'] = '0-12'
+    elif detect_below_median <= 5.0:
+        if indicator_df.iloc[i]['Grade'] == 'C':
+            indicator_df.at[i,'Grade'] = 'B/C'
+            indicator_df.at[i,'GradeRange'] = '>2-5'
 
 # Append to indicator results table
 IndicatorResults_df = IndicatorResults_df.append(indicator_df)

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Python Script to generate indicator results for GW indicators
+Python Script with common indicator functions for GW and SW
 
 Created on Fri Jun 6 09:08:13 2021
 
@@ -11,6 +11,7 @@ Created on Fri Jun 6 09:08:13 2021
 from hilltoppy import web_service as ws
 import pandas as pd
 import numpy as np
+import math
 
 def hilltop_data(base_url, hts, sites, measurements):
     """
@@ -177,6 +178,13 @@ def sample_freq(df,semiannual):
 
     
     return Frequency_df
+
+def round_half_up(n, decimals=0):
+    out = n
+    if ~np.isnan(out):
+        multiplier = 10 ** decimals
+        out = math.floor(n*multiplier + 0.5) / multiplier
+    return out
 
 def sort_censors(df,censor,numeric,ascending):
     '''

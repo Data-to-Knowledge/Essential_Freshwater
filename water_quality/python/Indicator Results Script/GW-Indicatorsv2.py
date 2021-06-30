@@ -12,7 +12,7 @@ from hilltoppy import web_service as ws
 import pandas as pd
 import numpy as np
 import csv
-from Functions import hilltop_data,stacked_data,sample_freq,sort_censors,Hazen_percentile
+from Functions import hilltop_data,stacked_data,sample_freq,sort_censors,Hazen_percentile,round_half_up
 
 ##############################################################################
 '''
@@ -26,13 +26,13 @@ measurements = ['Nitrate Nitrogen','E. coli']
 Import list of SoE sample project codes
 '''
 # Import set of SoE monitoring project codes
-with open('GWSoEProjectCodes.csv', 'r', encoding='utf-8-sig') as f:
+with open('GW-SoEProjectCodes.csv', 'r', encoding='utf-8-sig') as f:
     project_codes = [row[0] for row in csv.reader(f)]
     # Remove potential leading and tailing spaces
 f.close()
 
 # Import site list for Zella Smith missing project codes
-with open('ZellaSmithSoESites.csv', 'r', encoding='utf-8-sig') as f:
+with open('GW-ZellaSmithSoESites.csv', 'r', encoding='utf-8-sig') as f:
     ZS_sites = [row[0] for row in csv.reader(f)]
     # Remove potential leading and tailing spaces
 f.close()
@@ -176,7 +176,7 @@ indicator_df['AnnualSamples'] = np.where(indicator_df['AnnualSamples']==0,np.nan
 # Four values are required to generate results
 indicator_df[['Samples5yr','Detections5yr']] = indicator_df.groupby(['Site']).rolling(window=5,min_periods=4).sum()[['AnnualSamples','AnnualDetections']].reset_index().rename(columns={'AnnualSamples':'Samples5yr','AnnualDetections':'Detections5yr'})[['Samples5yr','Detections5yr']].values
 # Calculate the percentage by dividing the exceedances by the samples and multiply by 100.
-indicator_df['Result'] = round(indicator_df['Detections5yr']/indicator_df['Samples5yr']*100,2)
+indicator_df['Result'] = (indicator_df['Detections5yr']/indicator_df['Samples5yr']*100).apply(lambda x : round_half_up(x,2))
 # Remove unneeded columns, reset index, and set hydro year data type to int
 indicator_df = indicator_df.drop(columns=['AnnualSamples','AnnualDetections','Detections5yr']).rename(columns={'Samples5yr':'SamplesOrIntervals'})
 indicator_df = indicator_df.dropna().reset_index()
@@ -285,16 +285,17 @@ for year in range(indicator_df['HydroYear'].min(),indicator_df['HydroYear'].max(
     hydroyearstats = hydroyearstats.dropna(subset=['Frequency'])
     
     indicator_df2 = indicator_df2.append(hydroyearstats)
-    
+
+# Add columns to complete information for appending to full indicator results
+indicator_df2['Indicator'] = 'Nitrate Nitrogen 5-yr Median'
+indicator_df2['Numeric'] = indicator_df2['Numeric'].apply(lambda x : round_half_up(x,3))
+indicator_df2['Numeric'].mask(indicator_df2['Numeric']>=0.2,indicator_df2['Numeric'].apply(lambda x : round_half_up(x,2)),inplace=True)
+indicator_df2['Numeric'].mask((indicator_df2['Numeric']>=2)&(indicator_df2['Numeric']!=5.65),indicator_df2['Numeric'].apply(lambda x : round_half_up(x,1)),inplace=True)
+
 # Set bins for the indicator grades and add grade column
 bins = [0,1,5.65,11.3,np.inf]
 indicator_df2['GradeRange'] = pd.cut(indicator_df2['Numeric'],bins,labels=['0-1','>1-5.65','>5.65-11.3','>11.3'])
 indicator_df2['Grade'] = pd.cut(indicator_df2['Numeric'],bins,labels=['A','B','C','D'])
-# Add columns to complete information for appending to full indicator results
-indicator_df2['Indicator'] = 'Nitrate Nitrogen 5-yr Median'
-indicator_df2['Numeric'] = round(indicator_df2['Numeric'],3)
-indicator_df2['Numeric'].mask(indicator_df2['Numeric']>=0.2,round(indicator_df2['Numeric'],2),inplace=True)
-indicator_df2['Numeric'].mask(indicator_df2['Numeric']>=2,round(indicator_df2['Numeric'],1),inplace=True)
 
 # Convert result to a string
 indicator_df2['Result'] = indicator_df2['Censor'].fillna('')+indicator_df2['Numeric'].astype(str)
