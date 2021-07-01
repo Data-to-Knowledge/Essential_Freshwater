@@ -86,7 +86,7 @@ Unstacked_df = Frequency_df['Frequency'].unstack(level=2)
 Initiate Indicator Dataframe
 '''
 
-IndicatorResults_df = pd.DataFrame(columns=['Site','Measurement','Units','Indicator','HydroYear','Result','Censor','Numeric','GradeRange','Grade','SamplesOrIntervals','Frequency'])
+IndicatorResults_df = pd.DataFrame(columns=['FreshwaterBodyType','Measurement','Units','Indicator','Site','HydroYear','Result','Censor','Numeric','GradeRange','Grade','SamplesOrIntervals','Frequency','SpecialConsiderations'])
 IndicatorResults_df['HydroYear'] = IndicatorResults_df['HydroYear'].astype(int)
 IndicatorResults_df['SamplesOrIntervals'] = IndicatorResults_df['SamplesOrIntervals'].astype(int)
 
@@ -99,8 +99,10 @@ Chlorophyll-a Annual Maximum indicator
 measurement = 'Chlorophyll a (planktonic)'
 # Sort values from largest to smallest using censor and numeric components
 indicator_df = sort_censors(StatsData_df[StatsData_df['Measurement']==measurement].copy(),'Censor','Numeric',ascending=False)
-# Name indicator
-indicator_df['Indicator'] = 'Chlorophyll-a Annual Max'
+# Define waterbody, indicator, and special considerations
+indicator_df['FreshwaterBodyType'] = 'Lakes'
+indicator_df['Indicator'] = 'Annual Maximum'
+indicator_df['SpecialConsiderations'] = 'Separate analysis for open/closed to sea periods'
 # Count number of samples collected in Hydroyear
 indicator_df = pd.merge(indicator_df,indicator_df.groupby(['Site','HydroYear']).size().rename('SamplesOrIntervals'),on=['Site','HydroYear'],how='outer')
 # Set sample frequency as 'All' to indicate all samples are used
@@ -149,14 +151,21 @@ indicator_df = indicator_df.drop(columns=['Day','DayCensor','DayNumeric']).drop_
 # Obtain annual values by taking median of monthly values collected within a year
 indicator_df = Hazen_percentile(indicator_df,50,['Site','HydroYear'],'MonthCensor','MonthNumeric','AnnualCensor','AnnualNumeric')
 
+# Count the number of months represented by the data
 indicator_df = pd.merge(indicator_df,indicator_df.groupby(['Site','HydroYear']).size().rename('Months'),on=['Site','HydroYear'],how='outer')
+# Save monthly values in case result is censored value with detection limit
+# in grade B or C range. Depending on the lower ranked detections, the result
+# could be A/B, A/B/C, or B/C.
 tempdata = indicator_df[['Site','HydroYear','MonthCensor','MonthNumeric']].copy()
 indicator_df = indicator_df.drop(columns=['Month','MonthCensor','MonthNumeric']).drop_duplicates()
 indicator_df = indicator_df.rename(columns={'Months':'SamplesOrIntervals','AnnualNumeric':'Numeric','AnnualCensor':'Censor'})
 indicator_df['Frequency'] = 'Monthly'
 
-# Add columns to complete information for appending to full indicator results
-indicator_df['Indicator'] = 'Chlorophyll-a Annual Median'
+# Define waterbody, indicator, and special considerations
+indicator_df['FreshwaterBodyType'] = 'Lakes'
+indicator_df['Indicator'] = 'Annual Median'
+indicator_df['SpecialConsiderations'] = 'Separate analysis for open/closed to sea periods'
+# Round median numeric result to nearest 0.1
 indicator_df['Numeric'] = indicator_df['Numeric'].apply(lambda x : round_half_up(x,1))
 
 # Set bins for the indicator grades and add grade column
@@ -207,7 +216,15 @@ with pd.ExcelWriter('SW-IndicatorResults.xlsx') as writer:
     Unstacked_df.reset_index().to_excel(writer, sheet_name='UnstackedFrequency',index=False)
     IndicatorResults_df.to_excel(writer, sheet_name='IndicatorResults',index=False)
 
+##############################################################################
+'''
+Combine GW and SW indicator results
+'''
+GW_df = pd.read_excel('GW-IndicatorResults.xlsx',sheet_name='IndicatorResults')
+SW_df = pd.read_excel('SW-IndicatorResults.xlsx',sheet_name='IndicatorResults')
 
+df = pd.concat([GW_df,SW_df])
+df.to_excel('IndicatorResults.xlsx',sheet_name='IndicatorResults',index=False)
 
 
 

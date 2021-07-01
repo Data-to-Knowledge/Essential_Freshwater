@@ -105,7 +105,7 @@ Unstacked_df = Frequency_df['Frequency'].unstack(level=2)
 Initiate Indicator Dataframe
 '''
 
-IndicatorResults_df = pd.DataFrame(columns=['Site','Measurement','Units','Indicator','HydroYear','Result','Censor','Numeric','GradeRange','Grade','SamplesOrIntervals','Frequency'])
+IndicatorResults_df = pd.DataFrame(columns=['FreshwaterBodyType','Measurement','Units','Indicator','Site','HydroYear','Result','Censor','Numeric','GradeRange','Grade','SamplesOrIntervals','Frequency','SpecialConsiderations'])
 IndicatorResults_df['HydroYear'] = IndicatorResults_df['HydroYear'].astype(int)
 IndicatorResults_df['SamplesOrIntervals'] = IndicatorResults_df['SamplesOrIntervals'].astype(int)
 
@@ -118,8 +118,10 @@ Nitrate Nitrogen Annual Maximum indicator
 measurement = 'Nitrate Nitrogen'
 # Sort values from largest to smallest using censor and numeric components
 indicator_df = sort_censors(StatsData_df[StatsData_df['Measurement']==measurement].copy(),'Censor','Numeric',ascending=False)
-# Name indicator
-indicator_df['Indicator'] = 'Nitrate Nitrogen Annual Max'
+# Define waterbody, indicator, and special considerations
+indicator_df['FreshwaterBodyType'] = 'Groundwater'
+indicator_df['Indicator'] = 'Annual Maximum'
+indicator_df['SpecialConsiderations'] = None
 # Count number of samples collected in Hydroyear
 indicator_df = pd.merge(indicator_df,indicator_df.groupby(['Site','HydroYear']).size().rename('SamplesOrIntervals'),on=['Site','HydroYear'],how='outer')
 # Set sample frequency as 'All' to indicate all samples are used
@@ -182,7 +184,9 @@ indicator_df = indicator_df.drop(columns=['AnnualSamples','AnnualDetections','De
 indicator_df = indicator_df.dropna().reset_index()
 indicator_df['HydroYear'] = indicator_df['HydroYear'].astype(int)
 # Add columns to complete information for appending to full indicator results
-indicator_df['Indicator'] = 'E. coli 5-yr percent exceedances'
+indicator_df['FreshwaterBodyType'] = 'Groundwater'
+indicator_df['Indicator'] = '5-yr Exceedance Percentage'
+indicator_df['SpecialConsiderations'] = None
 indicator_df['Numeric'] = indicator_df['Result']
 indicator_df['Result'] = indicator_df['Result'].astype(str)
 indicator_df['Measurement'] = measurement
@@ -233,75 +237,83 @@ indicator_df = Hazen_percentile(indicator_df,50,['Site','HydroYear','Semester'],
 # Obtain annual values by taking median of monthly values collected within a year
 indicator_df = Hazen_percentile(indicator_df,50,['Site','HydroYear'],'MonthCensor','MonthNumeric','AnnualCensor','AnnualNumeric')
 
+# Save these results for use in calculations for each 5-year interval
+tempdata = indicator_df
 
-indicator_df2 = pd.DataFrame()
-for year in range(indicator_df['HydroYear'].min(),indicator_df['HydroYear'].max()+1):
+# Cycle through each hydroyear and collate the appropriate 5-yr data using the
+# appropriate data frequency
+indicator_df = pd.DataFrame()
+for year in range(tempdata['HydroYear'].min(),tempdata['HydroYear'].max()+1):
     print(year)
     years = [year-i for i in range(0,5)]
-    hydroyearstats = indicator_df[indicator_df['HydroYear'].isin(years)]
-    
+    hydroyearstats = tempdata[tempdata['HydroYear'].isin(years)]
+    # Determine number of months with results in 5-yr period and monthly median
     hydroyearstats = pd.merge(hydroyearstats,hydroyearstats.groupby('Site').size().rename('Months5yr'),on=['Site'],how='outer')
     hydroyearstats = Hazen_percentile(hydroyearstats,50,['Site'],'MonthCensor','MonthNumeric','Months5yrCensor','Months5yrNumeric')
     hydroyearstats = hydroyearstats.drop(columns=['Month','MonthCensor','MonthNumeric']).drop_duplicates()
-    
+    # Determine number of quarters with results in 5-yr period and quarterly median
     hydroyearstats = pd.merge(hydroyearstats,hydroyearstats.groupby('Site').size().rename('Quarters5yr'),on=['Site'],how='outer')
     hydroyearstats = Hazen_percentile(hydroyearstats,50,['Site'],'QuarterCensor','QuarterNumeric','Quarters5yrCensor','Quarters5yrNumeric')
     hydroyearstats = hydroyearstats.drop(columns=['Quarter','QuarterCensor','QuarterNumeric']).drop_duplicates()
-    
+    # Determine number of half-years with results in 5-yr period and semiannual median
     hydroyearstats = pd.merge(hydroyearstats,hydroyearstats.groupby('Site').size().rename('Semesters5yr'),on=['Site'],how='outer')
     hydroyearstats = Hazen_percentile(hydroyearstats,50,['Site'],'SemesterCensor','SemesterNumeric','Semesters5yrCensor','Semesters5yrNumeric')
     hydroyearstats = hydroyearstats.drop(columns=['Semester','SemesterCensor','SemesterNumeric']).drop_duplicates()
-    
+    # Determine number of years with results in 5-yr period and annual median
     hydroyearstats = pd.merge(hydroyearstats,hydroyearstats.groupby('Site').size().rename('Years5yr'),on=['Site'],how='outer')
     hydroyearstats = Hazen_percentile(hydroyearstats,50,['Site'],'AnnualCensor','AnnualNumeric','Years5yrCensor','Years5yrNumeric')
     hydroyearstats = hydroyearstats.drop(columns=['HydroYear','AnnualCensor','AnnualNumeric']).drop_duplicates()
-    
+    # Establish appropriate frequency for 5-yr median
     hydroyearstats['HydroYear'] = year
     hydroyearstats['Frequency'] = None
     hydroyearstats['Frequency'].mask(hydroyearstats['Years5yr'] >= 4, 'Annual', inplace=True)
     hydroyearstats['Frequency'].mask(hydroyearstats['Semesters5yr'] >= 8, 'Semi-annual', inplace=True)
     hydroyearstats['Frequency'].mask(hydroyearstats['Quarters5yr'] >= 16, 'Quarterly', inplace=True)
     hydroyearstats['Frequency'].mask(hydroyearstats['Months5yr'] >= 48, 'Monthly', inplace=True)
-    
+    # Set the 5-yr median censor component for set frequency
     hydroyearstats['Censor'] = None
     hydroyearstats['Censor'].mask(hydroyearstats['Years5yr'] >= 4, hydroyearstats['Years5yrCensor'], inplace=True)
     hydroyearstats['Censor'].mask(hydroyearstats['Semesters5yr'] >= 8, hydroyearstats['Semesters5yrCensor'], inplace=True)
     hydroyearstats['Censor'].mask(hydroyearstats['Quarters5yr'] >= 16, hydroyearstats['Quarters5yrCensor'], inplace=True)
     hydroyearstats['Censor'].mask(hydroyearstats['Months5yr'] >= 48, hydroyearstats['Months5yrCensor'], inplace=True)
-    
+    # Set the 5-yr median numeric component for set frequency
     hydroyearstats['Numeric'] = np.nan
     hydroyearstats['Numeric'].mask(hydroyearstats['Years5yr'] >= 4, hydroyearstats['Years5yrNumeric'], inplace=True)
     hydroyearstats['Numeric'].mask(hydroyearstats['Semesters5yr'] >= 8, hydroyearstats['Semesters5yrNumeric'], inplace=True)
     hydroyearstats['Numeric'].mask(hydroyearstats['Quarters5yr'] >= 16, hydroyearstats['Quarters5yrNumeric'], inplace=True)
     hydroyearstats['Numeric'].mask(hydroyearstats['Months5yr'] >= 48, hydroyearstats['Months5yrNumeric'], inplace=True)
-    
+    # Set the 5-yr median interval count for set frequency
     hydroyearstats['SamplesOrIntervals'] = np.nan
     hydroyearstats['SamplesOrIntervals'].mask(hydroyearstats['Years5yr'] >= 4, hydroyearstats['Years5yr'], inplace=True)
     hydroyearstats['SamplesOrIntervals'].mask(hydroyearstats['Semesters5yr'] >= 8, hydroyearstats['Semesters5yr'], inplace=True)
     hydroyearstats['SamplesOrIntervals'].mask(hydroyearstats['Quarters5yr'] >= 16, hydroyearstats['Quarters5yr'], inplace=True)
     hydroyearstats['SamplesOrIntervals'].mask(hydroyearstats['Months5yr'] >= 48, hydroyearstats['Months5yr'], inplace=True)
-    
+    # Reorder columns and drop columns that do not have a set frequency
     hydroyearstats = hydroyearstats[['Site','Measurement','Units','HydroYear','Frequency','Censor','Numeric','SamplesOrIntervals']]
     hydroyearstats = hydroyearstats.dropna(subset=['Frequency'])
     
-    indicator_df2 = indicator_df2.append(hydroyearstats)
+    indicator_df = indicator_df.append(hydroyearstats)
 
 # Add columns to complete information for appending to full indicator results
-indicator_df2['Indicator'] = 'Nitrate Nitrogen 5-yr Median'
-indicator_df2['Numeric'] = indicator_df2['Numeric'].apply(lambda x : round_half_up(x,3))
-indicator_df2['Numeric'].mask(indicator_df2['Numeric']>=0.2,indicator_df2['Numeric'].apply(lambda x : round_half_up(x,2)),inplace=True)
-indicator_df2['Numeric'].mask((indicator_df2['Numeric']>=2)&(indicator_df2['Numeric']!=5.65),indicator_df2['Numeric'].apply(lambda x : round_half_up(x,1)),inplace=True)
+indicator_df['FreshwaterBodyType'] = 'Groundwater'
+indicator_df['Indicator'] = '5-yr Median'
+indicator_df['SpecialConsiderations'] = None
+# Appropriately round results to match measurement precision in that range
+# 5.65 should not be rounded since it is a grade cutoff
+indicator_df['Numeric'] = indicator_df['Numeric'].apply(lambda x : round_half_up(x,3))
+indicator_df['Numeric'].mask(indicator_df['Numeric']>=0.2,indicator_df['Numeric'].apply(lambda x : round_half_up(x,2)),inplace=True)
+indicator_df['Numeric'].mask((indicator_df['Numeric']>=2)&(indicator_df['Numeric']!=5.65),indicator_df['Numeric'].apply(lambda x : round_half_up(x,1)),inplace=True)
 
 # Set bins for the indicator grades and add grade column
 bins = [0,1,5.65,11.3,np.inf]
-indicator_df2['GradeRange'] = pd.cut(indicator_df2['Numeric'],bins,labels=['0-1','>1-5.65','>5.65-11.3','>11.3'])
-indicator_df2['Grade'] = pd.cut(indicator_df2['Numeric'],bins,labels=['A','B','C','D'])
+indicator_df['GradeRange'] = pd.cut(indicator_df['Numeric'],bins,labels=['0-1','>1-5.65','>5.65-11.3','>11.3'])
+indicator_df['Grade'] = pd.cut(indicator_df['Numeric'],bins,labels=['A','B','C','D'])
 
 # Convert result to a string
-indicator_df2['Result'] = indicator_df2['Censor'].fillna('')+indicator_df2['Numeric'].astype(str)
+indicator_df['Result'] = indicator_df['Censor'].fillna('')+indicator_df['Numeric'].astype(str)
 
 # Append to indicator results table
-IndicatorResults_df = IndicatorResults_df.append(indicator_df2)
+IndicatorResults_df = IndicatorResults_df.append(indicator_df)
 
 ##############################################################################
 '''
@@ -316,7 +328,14 @@ with pd.ExcelWriter('GW-IndicatorResults.xlsx') as writer:
     Unstacked_df.reset_index().to_excel(writer, sheet_name='UnstackedFrequency',index=False)
     IndicatorResults_df.to_excel(writer, sheet_name='IndicatorResults',index=False)
 
+##############################################################################
+'''
+Combine GW and SW indicator results
+'''
+GW_df = pd.read_excel('GW-IndicatorResults.xlsx',sheet_name='IndicatorResults')
+SW_df = pd.read_excel('SW-IndicatorResults.xlsx',sheet_name='IndicatorResults')
 
-
+df = pd.concat([GW_df,SW_df])
+df.to_excel('IndicatorResults.xlsx')
 
 
