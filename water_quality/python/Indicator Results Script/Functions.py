@@ -283,3 +283,208 @@ def Hazen_percentile(df,percentile,group_columns,censor_column_in,numeric_column
     hazen_df = hazen_df.drop(columns=['CensorRank','Rank','Samples','HazenRank','CensorRankContribution','NumericContribution','CensorRankOut'])
     
     return hazen_df
+
+def grades(df,bins):
+    '''
+    Function to set indicator grades
+    
+    Parameters
+    ----------
+    df : DataFrame
+        dataframe should include columns as output by stacked_data
+    bins : list of float
+        set of values that should be used to separate grades into A,B,C,D,etc.
+    
+    Returns
+    -------
+    Dataframe
+        With results graded
+    '''
+    
+    # Set grades based on number of items in bins
+    # Start with A and move through alphabet
+    grade_options = [chr(i+65) for i in range(len(bins)-1)]
+    # Use bins values to generate grade ranges
+    grade_range = ['{}-{}'.format(bins[0],bins[1])]+['>{}-{}'.format(bins[i],bins[i+1]) for i in range(1,len(bins)-2)]+['>{}'.format(bins[-2])]
+    # Set grades and ranges based on the numeric component column
+    df['Grade'] = pd.cut(df['Numeric'],bins,labels=grade_options,include_lowest=True)
+    df['GradeRange'] = pd.cut(df['Numeric'],bins,labels=grade_range,include_lowest=True)
+    
+    return df
+
+def grade_check(df,data_df,bins,frequency):
+    '''
+    Function to check where median censored values are graded below A and
+    if there are lower ranked detections that clarify whether a unique grade
+    can be determiend. For example, if the median result is <3 and grade A
+    cutoff is 2, then a 2.5 value is ranked below <3 and gaurantees a grade of B,
+    otherwise a combo grade is used A/B.
+    
+    Parameters
+    ----------
+    df : DataFrame
+        dataframe should include columns as output by stacked_data
+    data_df : DataFrame
+        dataframe where the values used to calculate the result are saved
+    bins : list of float
+        set of values that should be used to separate grades into A,B,C,D,etc.
+    frequency : str
+        declare frequency of sampling to call appropriate columns
+    
+    Returns
+    -------
+    Dataframe
+        With grades reworked to include uncertain results
+    '''
+    
+    # Set grades based on number of items in bins
+    # Start with A and move through alphabet
+    grades = [chr(i+65) for i in range(len(bins)-1)]
+    # Add combinations of grades and ranges to the categorical columns
+    new_grades = []
+    new_ranges = []
+    # Loop through number of grades combined: 2 to number of grades
+    for j in range(2,len(bins)):
+        # Loop through starting points
+        for k in range(len(bins)-j):
+            # Separate grades with /
+            new_grades.append('/'.join(grades[k:k+j]))
+            # Create ranges from values
+            new_ranges.append('>{}-{}'.format(bins[k],bins[k+j]))
+    # Ensure that first bin value is included in ranges
+    new_ranges = list(map(lambda s: str.replace(s,'>{}-'.format(bins[0]),'{}-'.format(bins[0])),new_ranges))
+    # Remove any range components that end at inf
+    new_ranges = list(map(lambda s: str.replace(s,'-inf',''),new_ranges))
+    # If inf is last bound, replace bin[0] with >= bin[0]
+    if new_ranges[-1] == '{}'.format(bins[0]):
+        new_ranges[-1] = '>={}'.format(bins[0])
+    # Add new grades and range to categorical columns
+    df['Grade'].cat.add_categories(new_categories=new_grades,inplace=True)
+    df['GradeRange'].cat.add_categories(new_categories=new_ranges,inplace=True)
+    # Reset index for use in locating censored results outside of grade A
+    df = df.reset_index(drop=True)
+    
+    # Find where result is censored and not A grade
+    for i in df[(df['Grade']!='A')&(df['Censor']=='<')].index:
+        # Find largest detected value below censor level, if any
+        if frequency == 'Monthly':
+            detect_below_median = data_df[(data_df['Site']==df.iloc[i]['Site'])&
+                     (data_df['HydroYear']==df.iloc[i]['HydroYear'])&
+                     (data_df['MonthNumeric'] < df.iloc[i]['Numeric'])&
+                     (data_df['MonthCensor']!='<')]['MonthNumeric'].max()
+        elif frequency == 'All':
+            detect_below_median = data_df[(data_df['Site']==df.iloc[i]['Site'])&
+                     (data_df['HydroYear']==df.iloc[i]['HydroYear'])&
+                     (data_df['Numeric'] < df.iloc[i]['Numeric'])&
+                     (data_df['Censor']!='<')]['Numeric'].max()
+        # If there is no detection below the median censored result or if the
+        # largest detection is grade A, assign grade A/B/... to censor grade
+        if np.isnan(detect_below_median) or detect_below_median <= bins[1]:
+            df.at[i,'Grade'] = list(filter(lambda k: k[-1] == df.iloc[i]['Grade'], new_grades))[-1]
+            df.at[i,'GradeRange'] = new_ranges[new_grades.index(df.iloc[i]['Grade'])]
+        # Check if highest detection below median is same grade as censored median
+        elif grades[len([x for x in bins if x <= detect_below_median])-1] == df.iloc[i]['Grade']:
+            continue
+        # Otherwise, set grade to be range between highest detect below median grade and censor grade
+        else:
+            df.at[i,'Grade'] = list(filter(lambda k: ((k[0] == grades[len([x for x in bins if x <= detect_below_median])-1])&(k[-1] == df.iloc[i]['Grade'])), new_grades))[0]
+            df.at[i,'GradeRange'] = new_ranges[new_grades.index(df.iloc[i]['Grade'])]
+            
+    return df
+
+def reduce_to_monthly(df):
+    '''
+    Function to reduce DateTime sample results to monthly values, which is the
+    most frequent monitoring regime for most ECan programmes.
+    First take median of results taken on the same day (this ensures that duplicate
+    samples taken for NEMS are combined first and do not bias outputs). Then
+    take the median of all daily results to obtain a monthly result.
+    
+    Parameters
+    ----------
+    df : DataFrame
+        dataframe should include columns as output by stacked_data
+    
+    Returns
+    -------
+    Dataframe
+        With monthly results
+    '''
+    
+    # Determine the Month and day for each sample. Note that due to the use of
+    # hydro years, a custom day of year value is used since leap years cause
+    # 1 july and 30 June to be the same day of the year.
+    df['Month'] = df['DateTime'].dt.month
+    df['Day'] = df['DateTime'].dt.month*31 + df['DateTime'].dt.day
+    
+    # Obtain daily values by taking median of samples collected in a day
+    df = Hazen_percentile(df,50,['Site','HydroYear','Day'],'Censor','Numeric','DayCensor','DayNumeric')
+    # Drop unnecessary columns and duplicates
+    df = df.drop(columns=['DateTime','Observation','Censor','Numeric']).drop_duplicates()
+    
+    # Obtain monthly values by taking median of samples collected within a month
+    df = Hazen_percentile(df,50,['Site','HydroYear','Month'],'DayCensor','DayNumeric','MonthCensor','MonthNumeric')
+    # Drop unnecessary columns and duplicates
+    df = df.drop(columns=['Day','DayCensor','DayNumeric']).drop_duplicates()
+    
+    return df
+
+def annual_max(df):
+    '''
+    Function to obtain the annual maximum for each site and hydroyear.
+    
+    Parameters
+    ----------
+    df : DataFrame
+        dataframe should include columns as output by stacked_data
+    
+    Returns
+    -------
+    Dataframe
+        With sample values reduced to annual maximum values for each site/hydroyear
+    '''
+    
+    # Sort values from largest to smallest using censor and numeric components
+    max_df = sort_censors(df,'Censor','Numeric',ascending=False)
+    # Count number of samples collected in Hydroyear
+    max_df = pd.merge(max_df,max_df.groupby(['Site','HydroYear']).size().rename('SamplesOrIntervals'),on=['Site','HydroYear'],how='outer')
+    # Keep maximum value for each hydro year
+    max_df = max_df.drop_duplicates(subset=['Site','HydroYear'],keep='first')
+    # Rename Observation column to be Result column and drop DateTime
+    max_df = max_df.rename(columns={'Observation':'Result'}).drop(columns=['DateTime'])
+    # Sort by Site and hydroyear
+    max_df = max_df.sort_values(by=['Site','HydroYear'],ascending=True)
+    
+    return max_df
+
+def annual_percentile(df,percentile):
+    '''
+    Function to obtain the percentile for each site and hydroyear from monthly data.
+    
+    Parameters
+    ----------
+    df : DataFrame
+        dataframe should include columns as output by stacked_data
+    percentile : flt
+        Hazen-percentile to calculate
+    
+    Returns
+    -------
+    Dataframe
+        With annual percentile values for each site/hydroyear
+    '''
+    
+    # Obtain annual values by taking median of monthly values collected within a year
+    df = Hazen_percentile(df,percentile,['Site','HydroYear'],'MonthCensor','MonthNumeric','AnnualCensor','AnnualNumeric')
+    # Count the number of months represented by the data
+    df = pd.merge(df,df.groupby(['Site','HydroYear']).size().rename('Months'),on=['Site','HydroYear'],how='outer')
+    # Drop rows that don't meet the Hazen percentile requirements (result=nan)
+    df = df.dropna(subset=['AnnualNumeric'])
+    # Drop unneeded columns
+    df = df.drop(columns=['Month','MonthCensor','MonthNumeric']).drop_duplicates()
+    # Rename columns to fit indicator dataframe strcuture
+    df = df.rename(columns={'Months':'SamplesOrIntervals','AnnualNumeric':'Numeric','AnnualCensor':'Censor'})
+    # Sort by Site and hydroyear
+    df = df.sort_values(by=['Site','HydroYear'],ascending=True)
+    
+    return df

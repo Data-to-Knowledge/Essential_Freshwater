@@ -11,7 +11,7 @@ Created on Fri Jun 6 09:08:13 2021
 from hilltoppy import web_service as ws
 import pandas as pd
 import numpy as np
-from Functions import hilltop_data,stacked_data,sample_freq,sort_censors,Hazen_percentile,round_half_up
+from Functions import hilltop_data,stacked_data,sample_freq,round_half_up,annual_max,grades,reduce_to_monthly,annual_percentile,grade_check
 
 ##############################################################################
 '''
@@ -20,7 +20,7 @@ Set measurements of interest
 
 measurements = ['Chlorophyll a (planktonic)','Chlorophyll a (benthic)','Chlorophyll a (Ethanol)',
                 'Total Nitrogen','Ammoniacal Nitrogen','Nitrate-N Nitrite-N',
-                'Total Phosphorus','E. coli']
+                'Total Phosphorus','Dissolved Reactive Phosphorus','E. coli']
 
 ##############################################################################
 '''
@@ -97,26 +97,24 @@ Chlorophyll-a Annual Maximum indicator
 
 # Set measurement parameter
 measurement = 'Chlorophyll a (planktonic)'
-# Sort values from largest to smallest using censor and numeric components
-indicator_df = sort_censors(StatsData_df[StatsData_df['Measurement']==measurement].copy(),'Censor','Numeric',ascending=False)
+# Save sample values in case result is censored value with detection limit
+# in grade B or C range. Depending on the lower ranked detections, the result
+# could be indetermined grade (i.e., A/B, A/B/C, or B/C)
+sample_df = StatsData_df[StatsData_df['Measurement']==measurement][['Site','HydroYear','Censor','Numeric']].copy()
+# Use annual_max function to generate annual max dataframe
+indicator_df = annual_max(StatsData_df[StatsData_df['Measurement']==measurement].copy())
 # Define waterbody, indicator, and special considerations
 indicator_df['FreshwaterBodyType'] = 'Lakes'
 indicator_df['Indicator'] = 'Annual Maximum'
 indicator_df['SpecialConsiderations'] = 'Separate analysis for open/closed to sea periods'
-# Count number of samples collected in Hydroyear
-indicator_df = pd.merge(indicator_df,indicator_df.groupby(['Site','HydroYear']).size().rename('SamplesOrIntervals'),on=['Site','HydroYear'],how='outer')
 # Set sample frequency as 'All' to indicate all samples are used
 indicator_df['Frequency'] = 'All'
-# Keep maximum value for each hydro year
-indicator_df = indicator_df.drop_duplicates(subset=['Site','HydroYear'],keep='first')
-# Rename Observation column to be Result column and drop DateTime
-indicator_df = indicator_df.rename(columns={'Observation':'Result'}).drop(columns=['DateTime'])
-# Sort by Site and hydroyear
-indicator_df = indicator_df.sort_values(by=['Site','HydroYear'],ascending=True)
-# Set bins for the indicator grades and grade range
+# Set bins for grades
 bins = [0,10,25,60,np.inf]
-indicator_df['GradeRange'] = pd.cut(indicator_df['Numeric'],bins,labels=['0-10','>10-25','>25-60','>60'])
-indicator_df['Grade'] = pd.cut(indicator_df['Numeric'],bins,labels=['A','B','C','D'])
+# Use grades function to set grades and grade range
+indicator_df = grades(indicator_df,bins)
+# Use  grade_check to adjust grade results for detected values
+indicator_df = grade_check(indicator_df,sample_df,bins,'All')
 # Append to indicator results table
 IndicatorResults_df = IndicatorResults_df.append(indicator_df)
 
@@ -127,79 +125,263 @@ Chlorophyll-a Annual Median indicator
 
 # Set measurement parameter
 measurement = 'Chlorophyll a (planktonic)'
-# Start by only considering the chlorophyll-a values
-indicator_df = StatsData_df[(StatsData_df['Measurement'] == measurement)].copy()
-
-# Duplicate samples are taken periodically and should not both be counted in
-# the median, reduce multiple samples collected in a day to a single value.
-# Additionally, no sites are regularly sampled more than monthly. Reduce multiple
-# samples collected within a month to a single value.
-
-indicator_df['Month'] = indicator_df['DateTime'].dt.month
-indicator_df['Day'] = indicator_df['DateTime'].dt.month*31 + indicator_df['DateTime'].dt.day
-
-# Obtain daily values by taking median of samples collected in a day
-indicator_df = Hazen_percentile(indicator_df,50,['Site','HydroYear','Day'],'Censor','Numeric','DayCensor','DayNumeric')
-# Drop unnecessary columns and duplicates
-indicator_df = indicator_df.drop(columns=['DateTime','Observation','Censor','Numeric']).drop_duplicates()
-
-# Obtain monthly values by taking median of samples collected within a month
-indicator_df = Hazen_percentile(indicator_df,50,['Site','HydroYear','Month'],'DayCensor','DayNumeric','MonthCensor','MonthNumeric')
-# Drop unnecessary columns and duplicates
-indicator_df = indicator_df.drop(columns=['Day','DayCensor','DayNumeric']).drop_duplicates()
-
-# Obtain annual values by taking median of monthly values collected within a year
-indicator_df = Hazen_percentile(indicator_df,50,['Site','HydroYear'],'MonthCensor','MonthNumeric','AnnualCensor','AnnualNumeric')
-
-# Count the number of months represented by the data
-indicator_df = pd.merge(indicator_df,indicator_df.groupby(['Site','HydroYear']).size().rename('Months'),on=['Site','HydroYear'],how='outer')
+# Use reduce_to_monthly function to generate monthly values dataframe
+indicator_df = reduce_to_monthly(StatsData_df[(StatsData_df['Measurement'] == measurement)].copy())
 # Save monthly values in case result is censored value with detection limit
 # in grade B or C range. Depending on the lower ranked detections, the result
-# could be A/B, A/B/C, or B/C.
-tempdata = indicator_df[['Site','HydroYear','MonthCensor','MonthNumeric']].copy()
-indicator_df = indicator_df.drop(columns=['Month','MonthCensor','MonthNumeric']).drop_duplicates()
-indicator_df = indicator_df.rename(columns={'Months':'SamplesOrIntervals','AnnualNumeric':'Numeric','AnnualCensor':'Censor'})
-indicator_df['Frequency'] = 'Monthly'
-
+# could be indetermined grade (i.e., A/B, A/B/C, or B/C)
+monthly_df = indicator_df[['Site','HydroYear','MonthCensor','MonthNumeric']].copy()
+# Use annual_percetnile function to generate annual medians from monthly data
+indicator_df = annual_percentile(indicator_df,50)
 # Define waterbody, indicator, and special considerations
 indicator_df['FreshwaterBodyType'] = 'Lakes'
 indicator_df['Indicator'] = 'Annual Median'
 indicator_df['SpecialConsiderations'] = 'Separate analysis for open/closed to sea periods'
+# Set sample frequency used to calculate median
+indicator_df['Frequency'] = 'Monthly'
 # Round median numeric result to nearest 0.1
 indicator_df['Numeric'] = indicator_df['Numeric'].apply(lambda x : round_half_up(x,1))
-
-# Set bins for the indicator grades and add grade column
-bins = [0,2,5,12,np.inf]
-indicator_df['GradeRange'] = pd.cut(indicator_df['Numeric'],bins,labels=['0-2','>2-5','>5-12','>12'])
-indicator_df['Grade'] = pd.cut(indicator_df['Numeric'],bins,labels=['A','B','C','D'])
-
-# Add potential new categories
-indicator_df['GradeRange'].cat.add_categories(new_categories=['0-5','0-12','>2-12'],inplace=True)
-indicator_df['Grade'].cat.add_categories(new_categories=['A/B','A/B/C','B/C'],inplace=True)
-
-indicator_df = indicator_df.reset_index(drop=True)
-
 # Convert result to a string
 indicator_df['Result'] = indicator_df['Censor'].fillna('')+indicator_df['Numeric'].astype(str)
+# Set bins for grades
+bins = [0,2,5,12,np.inf]
+# Use grades function to set grades and grade range
+indicator_df = grades(indicator_df,bins)
+# Use  grade_check to adjust grade results for detected values
+indicator_df = grade_check(indicator_df,monthly_df,bins,'Monthly')
+# Append to indicator results table
+IndicatorResults_df = IndicatorResults_df.append(indicator_df)
 
-# Find where result is censored and not A grade
-for i in indicator_df[(indicator_df['Grade']!='A')&(indicator_df['Censor']=='<')].index:
-    detect_below_median = tempdata[(tempdata['Site']==indicator_df.iloc[i]['Site'])&
-                 (tempdata['HydroYear']==indicator_df.iloc[i]['HydroYear'])&
-                 (tempdata['MonthNumeric'] < indicator_df.iloc[i]['Numeric'])&
-                 (tempdata['MonthCensor']!='<')]['MonthNumeric'].max()
-    if detect_below_median <= 2.0:
-        if indicator_df.iloc[i]['Grade'] == 'B':
-            indicator_df.at[i,'Grade'] = 'A/B'
-            indicator_df.at[i,'GradeRange'] = '0-5'
-        elif indicator_df.iloc[i]['Grade'] == 'C':
-            indicator_df.at[i,'Grade'] = 'A/B/C'
-            indicator_df.at[i,'GradeRange'] = '0-12'
-    elif detect_below_median <= 5.0:
-        if indicator_df.iloc[i]['Grade'] == 'C':
-            indicator_df.at[i,'Grade'] = 'B/C'
-            indicator_df.at[i,'GradeRange'] = '>2-5'
+##############################################################################
+'''
+Total Nitrogen Annual Median indicator
+'''
 
+# Set measurement parameter
+measurement = 'Total Nitrogen'
+# Use reduce_to_monthly function to generate monthly values dataframe
+indicator_df = reduce_to_monthly(StatsData_df[(StatsData_df['Measurement'] == measurement)].copy())
+# Save monthly values in case result is censored value with detection limit
+# in grade B or C range. Depending on the lower ranked detections, the result
+# could be indetermined grade (i.e., A/B, A/B/C, or B/C)
+monthly_df = indicator_df[['Site','HydroYear','MonthCensor','MonthNumeric']].copy()
+# Use annual_percentile function to generate annual medians from monthly data
+indicator_df = annual_percentile(indicator_df,50)
+# Define waterbody, indicator, and special considerations
+indicator_df['FreshwaterBodyType'] = 'Lakes'
+indicator_df['Indicator'] = 'Annual Median'
+#indicator_df['SpecialConsiderations'] = 'Separate analysis for open/closed to sea periods'
+# Set sample frequency used to calculate median
+indicator_df['Frequency'] = 'Monthly'
+# Round median numeric result to nearest 0.001, if over 0.2 then to nearest 0.01, if over 2 to nearest 0.1
+indicator_df['Numeric'] = indicator_df['Numeric'].apply(lambda x : round_half_up(x,3))
+indicator_df['Numeric'] = np.where(indicator_df['Numeric']>0.2,indicator_df['Numeric'].apply(lambda x : round_half_up(x,2)),indicator_df['Numeric'])
+indicator_df['Numeric'] = np.where(indicator_df['Numeric']>2.0,indicator_df['Numeric'].apply(lambda x : round_half_up(x,1)),indicator_df['Numeric'])
+# Convert result to a string
+indicator_df['Result'] = indicator_df['Censor'].fillna('')+indicator_df['Numeric'].astype(str)
+# Generate results for Polymictic vs seasonally stratified and brackish sites
+# Copy data
+indicator_copy_df = indicator_df.copy()
+# Start with Seasonally stratified & brackish
+indicator_df['SpecialConsiderations'] = 'Seasonally stratified and brackish, separate analysis for open/closed to sea periods'
+# Set bins for grades
+bins = [0,0.160,0.350,0.750,np.inf]
+# Use grades function to set grades and grade range
+indicator_df = grades(indicator_df,bins)
+# Use  grade_check to adjust grade results for detected values
+indicator_df = grade_check(indicator_df,monthly_df,bins,'Monthly')
+# Append to indicator results table
+IndicatorResults_df = IndicatorResults_df.append(indicator_df)
+# Repeat for Polymictic
+indicator_df = indicator_copy_df.copy()
+indicator_df['SpecialConsiderations'] = 'Polymictic, separate analysis for open/closed to sea periods'
+# Set bins for grades
+bins = [0,0.300,0.500,0.800,np.inf]
+# Use grades function to set grades and grade range
+indicator_df = grades(indicator_df,bins)
+# Use  grade_check to adjust grade results for detected values
+indicator_df = grade_check(indicator_df,monthly_df,bins,'Monthly')
+# Append to indicator results table
+IndicatorResults_df = IndicatorResults_df.append(indicator_df)
+
+##############################################################################
+'''
+Total Phosphorus Annual Median indicator
+'''
+
+# Set measurement parameter
+measurement = 'Total Phosphorus'
+# Use reduce_to_monthly function to generate monthly values dataframe
+indicator_df = reduce_to_monthly(StatsData_df[(StatsData_df['Measurement'] == measurement)].copy())
+# Save monthly values in case result is censored value with detection limit
+# in grade B or C range. Depending on the lower ranked detections, the result
+# could be indetermined grade (i.e., A/B, A/B/C, or B/C)
+monthly_df = indicator_df[['Site','HydroYear','MonthCensor','MonthNumeric']].copy()
+# Use annual_percentile function to generate annual medians from monthly data
+indicator_df = annual_percentile(indicator_df,50)
+# Define waterbody, indicator, and special considerations
+indicator_df['FreshwaterBodyType'] = 'Lakes'
+indicator_df['Indicator'] = 'Annual Median'
+indicator_df['SpecialConsiderations'] = 'Separate analysis for open/closed to sea periods'
+# Set sample frequency used to calculate median
+indicator_df['Frequency'] = 'Monthly'
+# Round median numeric result to nearest 0.1
+indicator_df['Numeric'] = indicator_df['Numeric'].apply(lambda x : round_half_up(x,3))
+indicator_df['Numeric'] = np.where(indicator_df['Numeric']>0.2,indicator_df['Numeric'].apply(lambda x : round_half_up(x,2)),indicator_df['Numeric'])
+indicator_df['Numeric'] = np.where(indicator_df['Numeric']>2.0,indicator_df['Numeric'].apply(lambda x : round_half_up(x,1)),indicator_df['Numeric'])
+# Convert result to a string
+indicator_df['Result'] = indicator_df['Censor'].fillna('')+indicator_df['Numeric'].astype(str)
+# Set bins for grades
+bins = [0,0.010,0.020,0.050,np.inf]
+# Use grades function to set grades and grade range
+indicator_df = grades(indicator_df,bins)
+# Use  grade_check to adjust grade results for detected values
+indicator_df = grade_check(indicator_df,monthly_df,bins,'Monthly')
+# Append to indicator results table
+IndicatorResults_df = IndicatorResults_df.append(indicator_df)
+
+##############################################################################
+'''
+Ammonia Annual Maximum indicator
+'''
+
+# Set measurement parameter
+measurement = 'Ammoniacal Nitrogen'
+# Save sample values in case result is censored value with detection limit
+# in grade B or C range. Depending on the lower ranked detections, the result
+# could be indetermined grade (i.e., A/B, A/B/C, or B/C)
+sample_df = StatsData_df[StatsData_df['Measurement']==measurement][['Site','HydroYear','Censor','Numeric']].copy()
+# Use annual_max function to generate annual max dataframe
+indicator_df = annual_max(StatsData_df[StatsData_df['Measurement']==measurement].copy())
+# Define indicator and special considerations
+indicator_df['FreshwaterBodyType'] = 'Rivers'
+indicator_df['Indicator'] = 'Annual Maximum'
+indicator_df['SpecialConsiderations'] = 'pH 8 and 20C temp adjustment'
+# Set sample frequency as 'All' to indicate all samples are used
+indicator_df['Frequency'] = 'All'
+# Set bins for grades
+bins = [0,0.05,0.40,2.20,np.inf]
+# Use grades function to set grades and grade range
+indicator_df = grades(indicator_df,bins)
+# Use  grade_check to adjust grade results for detected values
+indicator_df = grade_check(indicator_df,sample_df,bins,'All')
+# Append twice for Lakes and Rivers
+for FWType in ['Rivers','Lakes']:
+    # Set freshwater type
+    indicator_df['FreshwaterBodyType'] = FWType
+    # Append to indicator results table
+    IndicatorResults_df = IndicatorResults_df.append(indicator_df)
+
+##############################################################################
+'''
+Ammonia Annual Median indicator
+'''
+
+# Set measurement parameter
+measurement = 'Ammoniacal Nitrogen'
+# Use reduce_to_monthly function to generate monthly values dataframe
+indicator_df = reduce_to_monthly(StatsData_df[(StatsData_df['Measurement'] == measurement)].copy())
+# Save monthly values in case result is censored value with detection limit
+# in grade B or C range. Depending on the lower ranked detections, the result
+# could be indetermined grade (i.e., A/B, A/B/C, or B/C)
+monthly_df = indicator_df[['Site','HydroYear','MonthCensor','MonthNumeric']].copy()
+# Use annual_percentile function to generate annual medians from monthly data
+indicator_df = annual_percentile(indicator_df,50)
+# Define indicator and special considerations
+indicator_df['Indicator'] = 'Annual Median'
+indicator_df['SpecialConsiderations'] = 'pH 8 and 20C temp adjustment'
+# Set sample frequency used to calculate median
+indicator_df['Frequency'] = 'Monthly'
+# Round median numeric result to nearest 0.1
+indicator_df['Numeric'] = indicator_df['Numeric'].apply(lambda x : round_half_up(x,3))
+indicator_df['Numeric'] = np.where(indicator_df['Numeric']>0.2,indicator_df['Numeric'].apply(lambda x : round_half_up(x,2)),indicator_df['Numeric'])
+indicator_df['Numeric'] = np.where(indicator_df['Numeric']>2.0,indicator_df['Numeric'].apply(lambda x : round_half_up(x,1)),indicator_df['Numeric'])
+# Convert result to a string
+indicator_df['Result'] = indicator_df['Censor'].fillna('')+indicator_df['Numeric'].astype(str)
+# Set bins for grades
+bins = [0,0.05,0.40,2.20,np.inf]
+# Use grades function to set grades and grade range
+indicator_df = grades(indicator_df,bins)
+# Use  grade_check to adjust grade results for detected values
+indicator_df = grade_check(indicator_df,monthly_df,bins,'Monthly')
+# Append twice for Lakes and Rivers
+for FWType in ['Rivers','Lakes']:
+    # Set freshwater type
+    indicator_df['FreshwaterBodyType'] = FWType
+    # Append to indicator results table
+    IndicatorResults_df = IndicatorResults_df.append(indicator_df)
+
+##############################################################################
+'''
+Nitrate Annual Median indicator
+'''
+
+# Set measurement parameter
+measurement = 'Nitrate-N Nitrite-N'
+# Use reduce_to_monthly function to generate monthly values dataframe
+indicator_df = reduce_to_monthly(StatsData_df[(StatsData_df['Measurement'] == measurement)].copy())
+# Save monthly values in case result is censored value with detection limit
+# in grade B or C range. Depending on the lower ranked detections, the result
+# could be indetermined grade (i.e., A/B, A/B/C, or B/C)
+monthly_df = indicator_df[['Site','HydroYear','MonthCensor','MonthNumeric']].copy()
+# Use annual_percentile function to generate annual medians from monthly data
+indicator_df = annual_percentile(indicator_df,50)
+# Define waterbody, indicator, and special considerations
+indicator_df['FreshwaterBodyType'] = 'Rivers'
+indicator_df['Indicator'] = 'Annual Median'
+indicator_df['SpecialConsiderations'] = 'Using NNN for NO3 indicator'
+# Set sample frequency used to calculate median
+indicator_df['Frequency'] = 'Monthly'
+# Round median numeric result to nearest 0.1
+indicator_df['Numeric'] = indicator_df['Numeric'].apply(lambda x : round_half_up(x,4))
+indicator_df['Numeric'] = np.where(indicator_df['Numeric']>0.02,indicator_df['Numeric'].apply(lambda x : round_half_up(x,3)),indicator_df['Numeric'])
+indicator_df['Numeric'] = np.where(indicator_df['Numeric']>0.2,indicator_df['Numeric'].apply(lambda x : round_half_up(x,2)),indicator_df['Numeric'])
+indicator_df['Numeric'] = np.where(indicator_df['Numeric']>2.0,indicator_df['Numeric'].apply(lambda x : round_half_up(x,1)),indicator_df['Numeric'])
+# Convert result to a string
+indicator_df['Result'] = indicator_df['Censor'].fillna('')+indicator_df['Numeric'].astype(str)
+# Set bins for grades
+bins = [0,1.0,2.4,6.9,np.inf]
+# Use grades function to set grades and grade range
+indicator_df = grades(indicator_df,bins)
+# Use  grade_check to adjust grade results for detected values
+indicator_df = grade_check(indicator_df,monthly_df,bins,'Monthly')
+# Append to indicator results table
+IndicatorResults_df = IndicatorResults_df.append(indicator_df)
+
+##############################################################################
+'''
+Nitrate 95th percentile indicator
+'''
+
+# Set measurement parameter
+measurement = 'Nitrate-N Nitrite-N'
+# Use reduce_to_monthly function to generate monthly values dataframe
+indicator_df = reduce_to_monthly(StatsData_df[(StatsData_df['Measurement'] == measurement)].copy())
+# Save monthly values in case result is censored value with detection limit
+# in grade B or C range. Depending on the lower ranked detections, the result
+# could be indetermined grade (i.e., A/B, A/B/C, or B/C)
+monthly_df = indicator_df[['Site','HydroYear','MonthCensor','MonthNumeric']].copy()
+# Use annual_percentile function to generate annual medians from monthly data
+indicator_df = annual_percentile(indicator_df,95)
+# Define waterbody, indicator, and special considerations
+indicator_df['FreshwaterBodyType'] = 'Rivers'
+indicator_df['Indicator'] = '95th Percentile'
+indicator_df['SpecialConsiderations'] = 'Using NNN for NO3 indicator'
+# Set sample frequency used to calculate median
+indicator_df['Frequency'] = 'Monthly'
+# Round median numeric result to nearest 0.1
+indicator_df['Numeric'] = indicator_df['Numeric'].apply(lambda x : round_half_up(x,4))
+indicator_df['Numeric'] = np.where(indicator_df['Numeric']>0.02,indicator_df['Numeric'].apply(lambda x : round_half_up(x,3)),indicator_df['Numeric'])
+indicator_df['Numeric'] = np.where(indicator_df['Numeric']>0.2,indicator_df['Numeric'].apply(lambda x : round_half_up(x,2)),indicator_df['Numeric'])
+indicator_df['Numeric'] = np.where(indicator_df['Numeric']>2.0,indicator_df['Numeric'].apply(lambda x : round_half_up(x,1)),indicator_df['Numeric'])
+# Convert result to a string
+indicator_df['Result'] = indicator_df['Censor'].fillna('')+indicator_df['Numeric'].astype(str)
+# Set bins for grades
+bins = [0,1.5,3.5,9.8,np.inf]
+# Use grades function to set grades and grade range
+indicator_df = grades(indicator_df,bins)
+# Use  grade_check to adjust grade results for detected values
+indicator_df = grade_check(indicator_df,monthly_df,bins,'Monthly')
 # Append to indicator results table
 IndicatorResults_df = IndicatorResults_df.append(indicator_df)
 
