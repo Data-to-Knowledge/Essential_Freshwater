@@ -381,6 +381,97 @@ def annual_percentile(df,percentile):
     
     return df
 
+def multiyear_percentile(df,percentile,years,frequency,requirements):
+    '''
+    Function to obtain the percentile for each site and hydroyear from monthly data.
+    
+    Parameters
+    ----------
+    df : DataFrame
+        dataframe should include columns as output by stacked_data
+    percentile : flt
+        Hazen-percentile to calculate
+    years : int
+        number of years over which to include data for percentile
+    frequency : list of str
+        list of frequencies to allow for percentile
+        - Annual, Semi-annual, Quarterly, Monthly
+    requirements : list of int
+        list of same length as frequency describing the minimum number of
+        intervals needed to consider indicator result as valid
+    
+    Returns
+    -------
+    Dataframe
+        With percentile values for each site/hydroyear
+    '''
+    
+    # Add Semester and Quarter indicator
+    df['Semester'] = np.where(df['Month']>=7,2,1)
+    df['Quarter'] = np.where(df['Month']>=10,4,
+                               np.where(df['Month']>=7,3,
+                            np.where(df['Month']>=4,2,1)))
+    # Every hydro year of data is used in the next 'years' hydroyears for the multiyear percentile
+    # Create column to indicate which years should be included in a given hydroyear's indicator result
+    df['IndicatorYear'] = df['HydroYear']
+    tempdata = df.copy()
+    # Repeat rows years-1 times and add 1,2,3... to IndicatorYear column
+    for i in range(years-1):
+        tempdata['IndicatorYear'] += 1
+        df = df.append(tempdata,ignore_index=True)
+    # Drop rows where IndicatorYear is larger than the largest HydroYear
+    df = df[df['IndicatorYear']<=df['HydroYear'].max()]
+    # Obtain quarterly values by taking median of monthly values collected within a quarter
+    df = Hazen_percentile(df,50,['Site','HydroYear','Quarter'],'MonthCensor','MonthNumeric','QuarterCensor','QuarterNumeric')
+    # Obtain semi-annual values by taking median of monthly values collected within a half year
+    df = Hazen_percentile(df,50,['Site','HydroYear','Semester'],'MonthCensor','MonthNumeric','SemesterCensor','SemesterNumeric')
+    # Obtain annual values by taking median of monthly values collected within a year
+    df = Hazen_percentile(df,50,['Site','HydroYear'],'MonthCensor','MonthNumeric','AnnualCensor','AnnualNumeric')
+    
+    # Count months and calculate the multiyear percentile based on monthly values
+    df = pd.merge(df,df.groupby(['Site','IndicatorYear']).size().rename('Months'),on=['Site','IndicatorYear'],how='outer')
+    df = Hazen_percentile(df,percentile,['Site','IndicatorYear'],'MonthCensor','MonthNumeric','MonthsCensor','MonthsNumeric')
+    df = df.drop(columns=['Month','MonthCensor','MonthNumeric']).drop_duplicates()
+    # Count quarters and calculate the 5-year median based on quarterly values
+    df = pd.merge(df,df.groupby(['Site','IndicatorYear']).size().rename('Quarters'),on=['Site','IndicatorYear'],how='outer')
+    df = Hazen_percentile(df,percentile,['Site','IndicatorYear'],'QuarterCensor','QuarterNumeric','QuartersCensor','QuartersNumeric')
+    df = df.drop(columns=['Quarter','QuarterCensor','QuarterNumeric']).drop_duplicates()
+    # Count semesters and calculate the 5-year median based on semi-annual values
+    df = pd.merge(df,df.groupby(['Site','IndicatorYear']).size().rename('Semesters'),on=['Site','IndicatorYear'],how='outer')
+    df = Hazen_percentile(df,percentile,['Site','IndicatorYear'],'SemesterCensor','SemesterNumeric','SemestersCensor','SemestersNumeric')
+    df = df.drop(columns=['Semester','SemesterCensor','SemesterNumeric']).drop_duplicates()
+    # Count years and calculate the 5-year median based on annual values
+    df = pd.merge(df,df.groupby(['Site','IndicatorYear']).size().rename('Years'),on=['Site','IndicatorYear'],how='outer')
+    df = Hazen_percentile(df,percentile,['Site','IndicatorYear'],'AnnualCensor','AnnualNumeric','YearsCensor','YearsNumeric')
+    df = df.drop(columns=['HydroYear','AnnualCensor','AnnualNumeric']).drop_duplicates().rename(columns={'IndicatorYear':'HydroYear'})
+    
+    # Use months, quarters, semesters, and years to determine sampling frequency
+    # that will be used in the percentile calculation by comparing to required
+    # data thresholds. Ordered to generate finest scale frequency when reqs met
+    
+    # Set base frequency to None
+    df['Frequency'] = None
+    for freq in [['Annual','Years'],['Semi-annual','Semesters'],['Quarterly','Quarters'],['Monthly','Months']]:
+        if freq[0] in frequency:
+            df['Frequency'] = np.where(df[freq[1]] >= requirements[frequency.index(freq[0])],freq[0],df['Frequency'])
+    # Choose the appropriately calculated median based on the sampling frequency
+    df[['Censor','Numeric','SamplesOrIntervals']] = \
+        np.where(np.transpose(np.asarray([df['Frequency'] == 'Monthly']*3)),
+                 df[['MonthsCensor','MonthsNumeric','Months']],
+        np.where(np.transpose(np.asarray([df['Frequency'] == 'Quarterly']*3)),
+                 df[['QuartersCensor','QuartersNumeric','Quarters']],
+        np.where(np.transpose(np.asarray([df['Frequency'] == 'Semi-annual']*3)),
+                 df[['SemestersCensor','SemestersNumeric','Semesters']],
+        np.where(np.transpose(np.asarray([df['Frequency'] == 'Annual']*3)),
+                 df[['YearsCensor','YearsNumeric','Years']],
+                 [None,np.nan,np.nan]))))
+    # Drop unnecessary columns and years that don't have enough data for calculation from annual data
+    df = df.drop(columns=['MonthsCensor','MonthsNumeric','Months','QuartersCensor','QuartersNumeric','Quarters','SemestersCensor','SemestersNumeric','Semesters','YearsCensor','YearsNumeric','Years',]).dropna(subset=['Frequency'])
+    # Sort by Site and hydroyear
+    df = df.sort_values(by=['Site','HydroYear'],ascending=True)
+    
+    return df
+
 def grades(df,bins):
     '''
     Function to set indicator grades

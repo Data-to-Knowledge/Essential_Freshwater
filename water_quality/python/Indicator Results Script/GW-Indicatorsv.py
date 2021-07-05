@@ -12,7 +12,7 @@ from hilltoppy import web_service as ws
 import pandas as pd
 import numpy as np
 import csv
-from Functions import hilltop_data,stacked_data,sample_freq,Hazen_percentile,round_half_up,annual_max,grades,grade_check,reduce_to_monthly
+from Functions import hilltop_data,stacked_data,sample_freq,round_half_up,annual_max,grades,grade_check,reduce_to_monthly,multiyear_percentile
 
 ##############################################################################
 '''
@@ -208,71 +208,12 @@ Nitrate Nitrogen 5-yr median
 measurement = 'Nitrate Nitrogen'
 # Use reduce_to_monthly function to generate monthly values dataframe
 indicator_df = reduce_to_monthly(StatsData_df[(StatsData_df['Measurement'] == measurement)].copy())
+# Use multi_year function to generate 5-yr medians
+indicator_df = multiyear_percentile(indicator_df,50,5,['Monthly','Quarterly','Semi-annual','Annual'],[48,16,8,4])
 # Define waterbody, indicator, and special considerations
 indicator_df['FreshwaterBodyType'] = 'Groundwater'
 indicator_df['Indicator'] = '5-yr Median'
 indicator_df['SpecialConsiderations'] = None
-# Add Semester and Quarter indicator
-indicator_df['Semester'] = np.where(indicator_df['Month']>=7,2,1)
-indicator_df['Quarter'] = np.where(indicator_df['Month']>=10,4,
-                           np.where(indicator_df['Month']>=7,3,
-                        np.where(indicator_df['Month']>=4,2,1)))
-# Every hydro year of data is used in the next 4 hydroyears for the 5-yr median
-# Create column to indicate which years should be included in a given hydroyear
-# 5-yr median
-indicator_df['IndicatorYear'] = indicator_df['HydroYear']
-tempdata = indicator_df.copy()
-# Repeat rows 4 times and add 1,2,3,4 to IndicatorYear column
-for i in range(4):
-    tempdata['IndicatorYear'] += 1
-    indicator_df = indicator_df.append(tempdata,ignore_index=True)
-# Drop rows where IndicatorYear is larger than the largest HydroYear
-indicator_df = indicator_df[indicator_df['IndicatorYear']<=indicator_df['HydroYear'].max()]
-# Obtain quarterly values by taking median of monthly values collected within a quarter
-indicator_df = Hazen_percentile(indicator_df,50,['Site','HydroYear','Quarter'],'MonthCensor','MonthNumeric','QuarterCensor','QuarterNumeric')
-# Obtain semi-annual values by taking median of monthly values collected within a half year
-indicator_df = Hazen_percentile(indicator_df,50,['Site','HydroYear','Semester'],'MonthCensor','MonthNumeric','SemesterCensor','SemesterNumeric')
-# Obtain annual values by taking median of monthly values collected within a year
-indicator_df = Hazen_percentile(indicator_df,50,['Site','HydroYear'],'MonthCensor','MonthNumeric','AnnualCensor','AnnualNumeric')
-
-# Count months and calculate the 5-year median based on monthly values
-indicator_df = pd.merge(indicator_df,indicator_df.groupby(['Site','IndicatorYear']).size().rename('Months'),on=['Site','IndicatorYear'],how='outer')
-indicator_df = Hazen_percentile(indicator_df,50,['Site','IndicatorYear'],'MonthCensor','MonthNumeric','MonthsCensor','MonthsNumeric')
-indicator_df = indicator_df.drop(columns=['Month','MonthCensor','MonthNumeric']).drop_duplicates()
-# Count quarters and calculate the 5-year median based on quarterly values
-indicator_df = pd.merge(indicator_df,indicator_df.groupby(['Site','IndicatorYear']).size().rename('Quarters'),on=['Site','IndicatorYear'],how='outer')
-indicator_df = Hazen_percentile(indicator_df,50,['Site','IndicatorYear'],'QuarterCensor','QuarterNumeric','QuartersCensor','QuartersNumeric')
-indicator_df = indicator_df.drop(columns=['Quarter','QuarterCensor','QuarterNumeric']).drop_duplicates()
-# Count semesters and calculate the 5-year median based on semi-annual values
-indicator_df = pd.merge(indicator_df,indicator_df.groupby(['Site','IndicatorYear']).size().rename('Semesters'),on=['Site','IndicatorYear'],how='outer')
-indicator_df = Hazen_percentile(indicator_df,50,['Site','IndicatorYear'],'SemesterCensor','SemesterNumeric','SemestersCensor','SemestersNumeric')
-indicator_df = indicator_df.drop(columns=['Semester','SemesterCensor','SemesterNumeric']).drop_duplicates()
-# Count years and calculate the 5-year median based on annual values
-indicator_df = pd.merge(indicator_df,indicator_df.groupby(['Site','IndicatorYear']).size().rename('Years'),on=['Site','IndicatorYear'],how='outer')
-indicator_df = Hazen_percentile(indicator_df,50,['Site','IndicatorYear'],'AnnualCensor','AnnualNumeric','YearsCensor','YearsNumeric')
-indicator_df = indicator_df.drop(columns=['HydroYear','AnnualCensor','AnnualNumeric']).drop_duplicates().rename(columns={'IndicatorYear':'HydroYear'})
-
-
-# Use months, quarters, semesters, and years to determine sampling frequency
-# that will be used in the median calculation
-indicator_df['Frequency'] = np.where(indicator_df['Months'] >= 48,'Monthly',
-                            np.where(indicator_df['Quarters'] >= 16,'Quarterly',
-                            np.where(indicator_df['Semesters'] >= 8,'Semi-annual',
-                            np.where(indicator_df['Years'] >= 4,'Annual',None))))
-# Choose the appropriately calculated median based on the sampling frequency
-indicator_df[['Censor','Numeric','SamplesOrIntervals']] = \
-    np.where(np.transpose(np.asarray([indicator_df['Frequency'] == 'Monthly']*3)),
-             indicator_df[['MonthsCensor','MonthsNumeric','Months']],
-    np.where(np.transpose(np.asarray([indicator_df['Frequency'] == 'Quarterly']*3)),
-             indicator_df[['QuartersCensor','QuartersNumeric','Quarters']],
-    np.where(np.transpose(np.asarray([indicator_df['Frequency'] == 'Semi-annual']*3)),
-             indicator_df[['SemestersCensor','SemestersNumeric','Semesters']],
-    np.where(np.transpose(np.asarray([indicator_df['Frequency'] == 'Annual']*3)),
-             indicator_df[['YearsCensor','YearsNumeric','Years']],
-             [None,np.nan,np.nan]))))
-# Drop unnecessary columns and years that don't have enough data for calculation from annual data
-indicator_df = indicator_df.drop(columns=['MonthsCensor','MonthsNumeric','Months','QuartersCensor','QuartersNumeric','Quarters','SemestersCensor','SemestersNumeric','Semesters','YearsCensor','YearsNumeric','Years',]).dropna(subset=['Frequency'])
-
 # Appropriately round results to match measurement precision in that range
 # 5.65 should not be rounded since it is a grade cutoff
 indicator_df['Numeric'] = indicator_df['Numeric'].apply(lambda x : round_half_up(x,3))
@@ -280,7 +221,6 @@ indicator_df['Numeric'] = np.where(indicator_df['Numeric']>=0.2,indicator_df['Nu
 indicator_df['Numeric'] = np.where((indicator_df['Numeric']>=2)&(indicator_df['Numeric']!=5.65),indicator_df['Numeric'].apply(lambda x : round_half_up(x,1)),indicator_df['Numeric'])
 # Convert result to a string
 indicator_df['Result'] = indicator_df['Censor'].fillna('')+indicator_df['Numeric'].astype(str)
-indicator_df = indicator_df.sort_values(by=['Site','HydroYear'],ascending=True)
 # Set bins for grades
 bins = [0,1,5.65,11.3,np.inf]
 # Use grades function to set grades and grade range

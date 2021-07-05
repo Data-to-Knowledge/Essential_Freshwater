@@ -11,7 +11,7 @@ Created on Fri Jun 6 09:08:13 2021
 from hilltoppy import web_service as ws
 import pandas as pd
 import numpy as np
-from Functions import hilltop_data,stacked_data,sample_freq,round_half_up,annual_max,grades,reduce_to_monthly,annual_percentile,grade_check
+from Functions import hilltop_data,stacked_data,sample_freq,round_half_up,annual_max,grades,reduce_to_monthly,annual_percentile,grade_check,multiyear_percentile
 
 ##############################################################################
 '''
@@ -173,7 +173,7 @@ indicator_df['Indicator'] = 'Annual Median'
 #indicator_df['SpecialConsiderations'] = 'Separate analysis for open/closed to sea periods'
 # Set sample frequency used to calculate median
 indicator_df['Frequency'] = 'Monthly'
-# Round median numeric result to nearest 0.001, if over 0.2 then to nearest 0.01, if over 2 to nearest 0.1
+# Round median numeric result to nearest 0.001, reduced precision for higher concentrations
 indicator_df['Numeric'] = indicator_df['Numeric'].apply(lambda x : round_half_up(x,3))
 indicator_df['Numeric'] = np.where(indicator_df['Numeric']>0.2,indicator_df['Numeric'].apply(lambda x : round_half_up(x,2)),indicator_df['Numeric'])
 indicator_df['Numeric'] = np.where(indicator_df['Numeric']>2.0,indicator_df['Numeric'].apply(lambda x : round_half_up(x,1)),indicator_df['Numeric'])
@@ -225,7 +225,7 @@ indicator_df['Indicator'] = 'Annual Median'
 indicator_df['SpecialConsiderations'] = 'Separate analysis for open/closed to sea periods'
 # Set sample frequency used to calculate median
 indicator_df['Frequency'] = 'Monthly'
-# Round median numeric result to nearest 0.1
+# Round median numeric result to nearest 0.001, reduced precision for higher concentrations
 indicator_df['Numeric'] = indicator_df['Numeric'].apply(lambda x : round_half_up(x,3))
 indicator_df['Numeric'] = np.where(indicator_df['Numeric']>0.2,indicator_df['Numeric'].apply(lambda x : round_half_up(x,2)),indicator_df['Numeric'])
 indicator_df['Numeric'] = np.where(indicator_df['Numeric']>2.0,indicator_df['Numeric'].apply(lambda x : round_half_up(x,1)),indicator_df['Numeric'])
@@ -292,7 +292,7 @@ indicator_df['Indicator'] = 'Annual Median'
 indicator_df['SpecialConsiderations'] = 'pH 8 and 20C temp adjustment'
 # Set sample frequency used to calculate median
 indicator_df['Frequency'] = 'Monthly'
-# Round median numeric result to nearest 0.1
+# Round median numeric result to nearest 0.001, reduced precision for higher concentrations
 indicator_df['Numeric'] = indicator_df['Numeric'].apply(lambda x : round_half_up(x,3))
 indicator_df['Numeric'] = np.where(indicator_df['Numeric']>0.2,indicator_df['Numeric'].apply(lambda x : round_half_up(x,2)),indicator_df['Numeric'])
 indicator_df['Numeric'] = np.where(indicator_df['Numeric']>2.0,indicator_df['Numeric'].apply(lambda x : round_half_up(x,1)),indicator_df['Numeric'])
@@ -332,7 +332,7 @@ indicator_df['Indicator'] = 'Annual Median'
 indicator_df['SpecialConsiderations'] = 'Using NNN for NO3 indicator'
 # Set sample frequency used to calculate median
 indicator_df['Frequency'] = 'Monthly'
-# Round median numeric result to nearest 0.1
+# Round median numeric result to nearest 0.0001, reduced precision for higher concentrations
 indicator_df['Numeric'] = indicator_df['Numeric'].apply(lambda x : round_half_up(x,4))
 indicator_df['Numeric'] = np.where(indicator_df['Numeric']>0.02,indicator_df['Numeric'].apply(lambda x : round_half_up(x,3)),indicator_df['Numeric'])
 indicator_df['Numeric'] = np.where(indicator_df['Numeric']>0.2,indicator_df['Numeric'].apply(lambda x : round_half_up(x,2)),indicator_df['Numeric'])
@@ -369,7 +369,7 @@ indicator_df['Indicator'] = '95th Percentile'
 indicator_df['SpecialConsiderations'] = 'Using NNN for NO3 indicator'
 # Set sample frequency used to calculate median
 indicator_df['Frequency'] = 'Monthly'
-# Round median numeric result to nearest 0.1
+# Round median numeric result to nearest 0.0001, reduced precision for higher concentrations
 indicator_df['Numeric'] = indicator_df['Numeric'].apply(lambda x : round_half_up(x,4))
 indicator_df['Numeric'] = np.where(indicator_df['Numeric']>0.02,indicator_df['Numeric'].apply(lambda x : round_half_up(x,3)),indicator_df['Numeric'])
 indicator_df['Numeric'] = np.where(indicator_df['Numeric']>0.2,indicator_df['Numeric'].apply(lambda x : round_half_up(x,2)),indicator_df['Numeric'])
@@ -378,6 +378,76 @@ indicator_df['Numeric'] = np.where(indicator_df['Numeric']>2.0,indicator_df['Num
 indicator_df['Result'] = indicator_df['Censor'].fillna('')+indicator_df['Numeric'].astype(str)
 # Set bins for grades
 bins = [0,1.5,3.5,9.8,np.inf]
+# Use grades function to set grades and grade range
+indicator_df = grades(indicator_df,bins)
+# Use  grade_check to adjust grade results for detected values
+indicator_df = grade_check(indicator_df,monthly_df,bins,'Monthly')
+# Append to indicator results table
+IndicatorResults_df = IndicatorResults_df.append(indicator_df)
+
+##############################################################################
+'''
+DRP 5-yr median
+'''
+
+# Set measurement parameter
+measurement = 'Dissolved Reactive Phosphorus'
+# Use reduce_to_monthly function to generate monthly values dataframe
+indicator_df = reduce_to_monthly(StatsData_df[(StatsData_df['Measurement'] == measurement)].copy())
+# Save monthly values in case result is censored value with detection limit
+# in grade B or C range. Depending on the lower ranked detections, the result
+# could be indetermined grade (i.e., A/B, A/B/C, or B/C)
+monthly_df = indicator_df[['Site','HydroYear','MonthCensor','MonthNumeric']].copy()
+# Use multi_year function to generate 5-yr medians
+indicator_df = multiyear_percentile(indicator_df,50,5,['Monthly'],[48])
+# Define waterbody, indicator, and special considerations
+indicator_df['FreshwaterBodyType'] = 'Rivers'
+indicator_df['Indicator'] = '5-yr Median'
+indicator_df['SpecialConsiderations'] = None
+# Round median numeric result to nearest 0.0001, reduced precision for higher concentrations
+indicator_df['Numeric'] = indicator_df['Numeric'].apply(lambda x : round_half_up(x,4))
+indicator_df['Numeric'] = np.where(indicator_df['Numeric']>0.02,indicator_df['Numeric'].apply(lambda x : round_half_up(x,3)),indicator_df['Numeric'])
+indicator_df['Numeric'] = np.where(indicator_df['Numeric']>0.2,indicator_df['Numeric'].apply(lambda x : round_half_up(x,2)),indicator_df['Numeric'])
+indicator_df['Numeric'] = np.where(indicator_df['Numeric']>2.0,indicator_df['Numeric'].apply(lambda x : round_half_up(x,1)),indicator_df['Numeric'])
+# Convert result to a string
+indicator_df['Result'] = indicator_df['Censor'].fillna('')+indicator_df['Numeric'].astype(str)
+# Set bins for grades
+bins = [0,0.006,0.010,0.018,np.inf]
+# Use grades function to set grades and grade range
+indicator_df = grades(indicator_df,bins)
+# Use  grade_check to adjust grade results for detected values
+indicator_df = grade_check(indicator_df,monthly_df,bins,'Monthly')
+# Append to indicator results table
+IndicatorResults_df = IndicatorResults_df.append(indicator_df)
+
+##############################################################################
+'''
+DRP 5-yr 95th Percentile
+'''
+
+# Set measurement parameter
+measurement = 'Dissolved Reactive Phosphorus'
+# Use reduce_to_monthly function to generate monthly values dataframe
+indicator_df = reduce_to_monthly(StatsData_df[(StatsData_df['Measurement'] == measurement)].copy())
+# Save monthly values in case result is censored value with detection limit
+# in grade B or C range. Depending on the lower ranked detections, the result
+# could be indetermined grade (i.e., A/B, A/B/C, or B/C)
+monthly_df = indicator_df[['Site','HydroYear','MonthCensor','MonthNumeric']].copy()
+# Use multi_year function to generate 5-yr medians
+indicator_df = multiyear_percentile(indicator_df,95,5,['Monthly'],[48])
+# Define waterbody, indicator, and special considerations
+indicator_df['FreshwaterBodyType'] = 'Rivers'
+indicator_df['Indicator'] = '95th percentile'
+indicator_df['SpecialConsiderations'] = None
+# Round median numeric result to nearest 0.0001, reduced precision for higher concentrations
+indicator_df['Numeric'] = indicator_df['Numeric'].apply(lambda x : round_half_up(x,4))
+indicator_df['Numeric'] = np.where(indicator_df['Numeric']>0.02,indicator_df['Numeric'].apply(lambda x : round_half_up(x,3)),indicator_df['Numeric'])
+indicator_df['Numeric'] = np.where(indicator_df['Numeric']>0.2,indicator_df['Numeric'].apply(lambda x : round_half_up(x,2)),indicator_df['Numeric'])
+indicator_df['Numeric'] = np.where(indicator_df['Numeric']>2.0,indicator_df['Numeric'].apply(lambda x : round_half_up(x,1)),indicator_df['Numeric'])
+# Convert result to a string
+indicator_df['Result'] = indicator_df['Censor'].fillna('')+indicator_df['Numeric'].astype(str)
+# Set bins for grades
+bins = [0,0.021,0.030,0.054,np.inf]
 # Use grades function to set grades and grade range
 indicator_df = grades(indicator_df,bins)
 # Use  grade_check to adjust grade results for detected values
