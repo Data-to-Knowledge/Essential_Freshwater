@@ -284,6 +284,103 @@ def Hazen_percentile(df,percentile,group_columns,censor_column_in,numeric_column
     
     return hazen_df
 
+def reduce_to_monthly(df):
+    '''
+    Function to reduce DateTime sample results to monthly values, which is the
+    most frequent monitoring regime for most ECan programmes.
+    First take median of results taken on the same day (this ensures that duplicate
+    samples taken for NEMS are combined first and do not bias outputs). Then
+    take the median of all daily results to obtain a monthly result.
+    
+    Parameters
+    ----------
+    df : DataFrame
+        dataframe should include columns as output by stacked_data
+    
+    Returns
+    -------
+    Dataframe
+        With monthly results
+    '''
+    
+    # Determine the Month and day for each sample. Note that due to the use of
+    # hydro years, a custom day of year value is used since leap years cause
+    # 1 july and 30 June to be the same day of the year.
+    df['Month'] = df['DateTime'].dt.month
+    df['Day'] = df['DateTime'].dt.month*31 + df['DateTime'].dt.day
+    
+    # Obtain daily values by taking median of samples collected in a day
+    df = Hazen_percentile(df,50,['Site','HydroYear','Day'],'Censor','Numeric','DayCensor','DayNumeric')
+    # Drop unnecessary columns and duplicates
+    df = df.drop(columns=['DateTime','Observation','Censor','Numeric']).drop_duplicates()
+    
+    # Obtain monthly values by taking median of samples collected within a month
+    df = Hazen_percentile(df,50,['Site','HydroYear','Month'],'DayCensor','DayNumeric','MonthCensor','MonthNumeric')
+    # Drop unnecessary columns and duplicates
+    df = df.drop(columns=['Day','DayCensor','DayNumeric']).drop_duplicates()
+    
+    return df
+
+def annual_max(df):
+    '''
+    Function to obtain the annual maximum for each site and hydroyear.
+    
+    Parameters
+    ----------
+    df : DataFrame
+        dataframe should include columns as output by stacked_data
+    
+    Returns
+    -------
+    Dataframe
+        With sample values reduced to annual maximum values for each site/hydroyear
+    '''
+    
+    # Sort values from largest to smallest using censor and numeric components
+    max_df = sort_censors(df,'Censor','Numeric',ascending=False)
+    # Count number of samples collected in Hydroyear
+    max_df = pd.merge(max_df,max_df.groupby(['Site','HydroYear']).size().rename('SamplesOrIntervals'),on=['Site','HydroYear'],how='outer')
+    # Keep maximum value for each hydro year
+    max_df = max_df.drop_duplicates(subset=['Site','HydroYear'],keep='first')
+    # Rename Observation column to be Result column and drop DateTime
+    max_df = max_df.rename(columns={'Observation':'Result'}).drop(columns=['DateTime'])
+    # Sort by Site and hydroyear
+    max_df = max_df.sort_values(by=['Site','HydroYear'],ascending=True)
+    
+    return max_df
+
+def annual_percentile(df,percentile):
+    '''
+    Function to obtain the percentile for each site and hydroyear from monthly data.
+    
+    Parameters
+    ----------
+    df : DataFrame
+        dataframe should include columns as output by stacked_data
+    percentile : flt
+        Hazen-percentile to calculate
+    
+    Returns
+    -------
+    Dataframe
+        With annual percentile values for each site/hydroyear
+    '''
+    
+    # Obtain annual values by taking median of monthly values collected within a year
+    df = Hazen_percentile(df,percentile,['Site','HydroYear'],'MonthCensor','MonthNumeric','AnnualCensor','AnnualNumeric')
+    # Count the number of months represented by the data
+    df = pd.merge(df,df.groupby(['Site','HydroYear']).size().rename('Months'),on=['Site','HydroYear'],how='outer')
+    # Drop rows that don't meet the Hazen percentile requirements (result=nan)
+    df = df.dropna(subset=['AnnualNumeric'])
+    # Drop unneeded columns
+    df = df.drop(columns=['Month','MonthCensor','MonthNumeric']).drop_duplicates()
+    # Rename columns to fit indicator dataframe strcuture
+    df = df.rename(columns={'Months':'SamplesOrIntervals','AnnualNumeric':'Numeric','AnnualCensor':'Censor'})
+    # Sort by Site and hydroyear
+    df = df.sort_values(by=['Site','HydroYear'],ascending=True)
+    
+    return df
+
 def grades(df,bins):
     '''
     Function to set indicator grades
@@ -390,101 +487,4 @@ def grade_check(df,data_df,bins,frequency):
             df.at[i,'Grade'] = list(filter(lambda k: ((k[0] == grades[len([x for x in bins if x <= detect_below_median])-1])&(k[-1] == df.iloc[i]['Grade'])), new_grades))[0]
             df.at[i,'GradeRange'] = new_ranges[new_grades.index(df.iloc[i]['Grade'])]
             
-    return df
-
-def reduce_to_monthly(df):
-    '''
-    Function to reduce DateTime sample results to monthly values, which is the
-    most frequent monitoring regime for most ECan programmes.
-    First take median of results taken on the same day (this ensures that duplicate
-    samples taken for NEMS are combined first and do not bias outputs). Then
-    take the median of all daily results to obtain a monthly result.
-    
-    Parameters
-    ----------
-    df : DataFrame
-        dataframe should include columns as output by stacked_data
-    
-    Returns
-    -------
-    Dataframe
-        With monthly results
-    '''
-    
-    # Determine the Month and day for each sample. Note that due to the use of
-    # hydro years, a custom day of year value is used since leap years cause
-    # 1 july and 30 June to be the same day of the year.
-    df['Month'] = df['DateTime'].dt.month
-    df['Day'] = df['DateTime'].dt.month*31 + df['DateTime'].dt.day
-    
-    # Obtain daily values by taking median of samples collected in a day
-    df = Hazen_percentile(df,50,['Site','HydroYear','Day'],'Censor','Numeric','DayCensor','DayNumeric')
-    # Drop unnecessary columns and duplicates
-    df = df.drop(columns=['DateTime','Observation','Censor','Numeric']).drop_duplicates()
-    
-    # Obtain monthly values by taking median of samples collected within a month
-    df = Hazen_percentile(df,50,['Site','HydroYear','Month'],'DayCensor','DayNumeric','MonthCensor','MonthNumeric')
-    # Drop unnecessary columns and duplicates
-    df = df.drop(columns=['Day','DayCensor','DayNumeric']).drop_duplicates()
-    
-    return df
-
-def annual_max(df):
-    '''
-    Function to obtain the annual maximum for each site and hydroyear.
-    
-    Parameters
-    ----------
-    df : DataFrame
-        dataframe should include columns as output by stacked_data
-    
-    Returns
-    -------
-    Dataframe
-        With sample values reduced to annual maximum values for each site/hydroyear
-    '''
-    
-    # Sort values from largest to smallest using censor and numeric components
-    max_df = sort_censors(df,'Censor','Numeric',ascending=False)
-    # Count number of samples collected in Hydroyear
-    max_df = pd.merge(max_df,max_df.groupby(['Site','HydroYear']).size().rename('SamplesOrIntervals'),on=['Site','HydroYear'],how='outer')
-    # Keep maximum value for each hydro year
-    max_df = max_df.drop_duplicates(subset=['Site','HydroYear'],keep='first')
-    # Rename Observation column to be Result column and drop DateTime
-    max_df = max_df.rename(columns={'Observation':'Result'}).drop(columns=['DateTime'])
-    # Sort by Site and hydroyear
-    max_df = max_df.sort_values(by=['Site','HydroYear'],ascending=True)
-    
-    return max_df
-
-def annual_percentile(df,percentile):
-    '''
-    Function to obtain the percentile for each site and hydroyear from monthly data.
-    
-    Parameters
-    ----------
-    df : DataFrame
-        dataframe should include columns as output by stacked_data
-    percentile : flt
-        Hazen-percentile to calculate
-    
-    Returns
-    -------
-    Dataframe
-        With annual percentile values for each site/hydroyear
-    '''
-    
-    # Obtain annual values by taking median of monthly values collected within a year
-    df = Hazen_percentile(df,percentile,['Site','HydroYear'],'MonthCensor','MonthNumeric','AnnualCensor','AnnualNumeric')
-    # Count the number of months represented by the data
-    df = pd.merge(df,df.groupby(['Site','HydroYear']).size().rename('Months'),on=['Site','HydroYear'],how='outer')
-    # Drop rows that don't meet the Hazen percentile requirements (result=nan)
-    df = df.dropna(subset=['AnnualNumeric'])
-    # Drop unneeded columns
-    df = df.drop(columns=['Month','MonthCensor','MonthNumeric']).drop_duplicates()
-    # Rename columns to fit indicator dataframe strcuture
-    df = df.rename(columns={'Months':'SamplesOrIntervals','AnnualNumeric':'Numeric','AnnualCensor':'Censor'})
-    # Sort by Site and hydroyear
-    df = df.sort_values(by=['Site','HydroYear'],ascending=True)
-    
     return df
