@@ -192,8 +192,10 @@ indicator_df['Measurement'] = measurement
 indicator_df['Units'] = units_dict[measurement]
 indicator_df['Frequency'] = 'Daily'
 indicator_df['Censor'] = None
+# Set bins for grades
+bins = [0,5,25,50,100]
 # Use grades function to set grades and grade range
-indicator_df = grades(indicator_df,[0,5,25,50,100])
+indicator_df = grades(indicator_df,bins)
 # Append to indicator results table
 IndicatorResults_df = IndicatorResults_df.append(indicator_df)
 
@@ -276,13 +278,13 @@ indicator_df = indicator_df.drop(columns=['MonthsCensor','MonthsNumeric','Months
 indicator_df['Numeric'] = indicator_df['Numeric'].apply(lambda x : round_half_up(x,3))
 indicator_df['Numeric'] = np.where(indicator_df['Numeric']>=0.2,indicator_df['Numeric'].apply(lambda x : round_half_up(x,2)),indicator_df['Numeric'])
 indicator_df['Numeric'] = np.where((indicator_df['Numeric']>=2)&(indicator_df['Numeric']!=5.65),indicator_df['Numeric'].apply(lambda x : round_half_up(x,1)),indicator_df['Numeric'])
-
 # Convert result to a string
 indicator_df['Result'] = indicator_df['Censor'].fillna('')+indicator_df['Numeric'].astype(str)
 indicator_df = indicator_df.sort_values(by=['Site','HydroYear'],ascending=True)
+# Set bins for grades
+bins = [0,1,5.65,11.3,np.inf]
 # Use grades function to set grades and grade range
-indicator_df = grades(indicator_df,[0,1,5.65,11.3,np.inf])
-
+indicator_df = grades(indicator_df,bins)
 # Append to indicator results table
 IndicatorResults_df = IndicatorResults_df.append(indicator_df)
 
