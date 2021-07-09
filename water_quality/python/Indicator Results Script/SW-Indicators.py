@@ -11,6 +11,7 @@ Created on Fri Jun 6 09:08:13 2021
 from hilltoppy import web_service as ws
 import pandas as pd
 import numpy as np
+import os
 from Functions import hilltop_data,stacked_data,sample_freq,round_half_up,annual_max,grades,reduce_to_monthly,annual_percentile,grade_check,multiyear_percentile
 
 ##############################################################################
@@ -461,7 +462,7 @@ Export the Results
 '''
 
 # Export results to Excel
-with pd.ExcelWriter('SW-IndicatorResults.xlsx') as writer:  
+with pd.ExcelWriter('SW-Results.xlsx') as writer:  
     WQData_df.to_excel(writer, sheet_name='HilltopData',index=True)
     StatsData_df.to_excel(writer, sheet_name='CleanedData',index=False)
     Frequency_df.reset_index().to_excel(writer, sheet_name='SampleFrequency',index=False)
@@ -472,11 +473,16 @@ with pd.ExcelWriter('SW-IndicatorResults.xlsx') as writer:
 '''
 Combine GW and SW indicator results
 '''
-GW_df = pd.read_excel('GW-IndicatorResults.xlsx',sheet_name='IndicatorResults')
-SW_df = pd.read_excel('SW-IndicatorResults.xlsx',sheet_name='IndicatorResults')
 
-df = pd.concat([GW_df,SW_df])
-df.to_excel('IndicatorResults.xlsx',sheet_name='IndicatorResults',index=False)
-
-
-
+# Check if GW results exist otherwise don't merge
+if os.path.isfile('GW-Results.xlsx'):
+    with pd.ExcelWriter('Results.xlsx') as writer:
+        # Only merge primary results in output
+        for sheet in ['IndicatorResults','TrendData','TrendResults']:
+            try:
+                GW_df = pd.read_excel('GW-Results.xlsx',sheet_name=sheet)
+                SW_df = pd.read_excel('SW-Results.xlsx',sheet_name=sheet)
+                df = pd.concat([GW_df,SW_df])
+                df.to_excel(writer,sheet_name=sheet,index=False)
+            except NameError:
+                continue

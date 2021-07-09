@@ -12,6 +12,8 @@ from hilltoppy import web_service as ws
 import pandas as pd
 import numpy as np
 import math
+import pymannkendall as mk
+from scipy import stats
 
 def hilltop_data(base_url, hts, sites, measurements):
     """
@@ -303,11 +305,11 @@ def reduce_to_monthly(df):
         With monthly results
     '''
     
-    # Determine the Month and day for each sample. Note that due to the use of
-    # hydro years, a custom day of year value is used since leap years cause
-    # 1 july and 30 June to be the same day of the year.
-    df['Month'] = df['DateTime'].dt.month
-    df['Day'] = df['DateTime'].dt.month*31 + df['DateTime'].dt.day
+    # Determine the Month and day for each sample in the given hydro year.
+    # Note that due to the use of hydro years, a custom day of year value is
+    # used since leap years cause 1 july and 30 June to be the same day of the year.
+    df['Month'] = (df['DateTime'].dt.month + 6 - 1)%12 + 1
+    df['Day'] = (df['DateTime'].dt.month*31 + df['DateTime'].dt.day + 31*6 - 1)%(31*12) + 1
     
     # Obtain daily values by taking median of samples collected in a day
     df = Hazen_percentile(df,50,['Site','HydroYear','Day'],'Censor','Numeric','DayCensor','DayNumeric')
@@ -318,8 +320,198 @@ def reduce_to_monthly(df):
     df = Hazen_percentile(df,50,['Site','HydroYear','Month'],'DayCensor','DayNumeric','MonthCensor','MonthNumeric')
     # Drop unnecessary columns and duplicates
     df = df.drop(columns=['Day','DayCensor','DayNumeric']).drop_duplicates()
+    # Sort by Site and hydroyear
+    df = df.sort_values(by=['Site','HydroYear'],ascending=True)
     
     return df
+
+def trend_format(df,frequency):
+    '''
+    Function to format monthly data into stacked dataframe with quarterly
+    and annual data frequency as well. Quarterly and annual values obtained by
+    taking median of monthly values within the quarter or year, respectively.
+    
+    Parameters
+    ----------
+    df : DataFrame
+        dataframe should include columns as output by reduced_to_monthly
+    frequency : list of str
+        sampling frequency upon which to calculate trends. Should be from
+        ['Annual','Quarterly','Monthly']
+    
+    Returns
+    -------
+    Dataframe
+        with values assigned to a frequency and an interval within each hydro year
+        at a site
+    '''
+    
+    # Indicate the quarter for each monthly value
+    df['Quarter'] = np.where(df['Month']>=10,2,
+                    np.where(df['Month']>=7,1,
+                    np.where(df['Month']>=4,4,3)))
+    # Obtain quarterly values by taking median of monthly values collected within a quarter
+    df = Hazen_percentile(df,50,['Site','HydroYear','Quarter'],'MonthCensor','MonthNumeric','QuarterCensor','QuarterNumeric')
+    # Set interval for annual data (always 1 since 1 year in each hydroyear)
+    df['Year'] = 1
+    # Obtain annual values by taking median of monthly values collected within a year
+    df = Hazen_percentile(df,50,['Site','HydroYear'],'MonthCensor','MonthNumeric','YearCensor','YearNumeric')
+    # Set index such that the interval number, censor, and numeric components can be stacked
+    df = df.set_index(['Site','Measurement','Units','HydroYear'])
+    # Check that the ordering is as such before replacing with multiindex
+    df = df[['Month','MonthCensor','MonthNumeric','Quarter','QuarterCensor','QuarterNumeric','Year','YearCensor','YearNumeric']]
+    # Create multiindex columns in prep for stacking
+    df.columns = pd.MultiIndex.from_tuples(list(zip(*[['Monthly']*3+['Quarterly']*3+['Annual']*3,['Interval','Censor','Numeric']*3])),names=['Frequency','Value'])
+    # Stack columns
+    df = df.stack(level=0)
+    # Reset index and remove duplicates
+    df = df.reset_index().drop_duplicates()
+    # Only keep desired sampling frequency results
+    df = df[df['Frequency'].isin(frequency)]
+    # Convert result to a string
+    df['Result'] = df['Censor'].fillna('')+df['Numeric'].astype(str)
+    # Sort by Site and hydroyear
+    df = df.sort_values(by=['Site','Frequency','HydroYear'],ascending=True)
+    
+    return df
+
+def trends(df,trend_periods=[5,10,15,20],final_year=[2021],requirement=0.80):
+    '''
+    Function to calculate trend analyses on a dataset. Can only handle
+    Monthly, Quarterly, and Annual sampling frequency
+    
+    Parameters
+    ----------
+    df : DataFrame
+        dataframe should include columns as output by trends_format()
+    trend_periods : list of int
+        List of trend periods to calculate for
+    final_year : list of int
+        List of hydroyears to calculate trend results for
+    requirements : float
+        Percentage of expected intervals represented by values in the trend period
+    
+    Returns
+    -------
+    Dataframe
+        with trends results output and an estimated value for 2035 utilising slope and intercept
+    '''
+    
+    # Set maximum hydro year. No trend results should be calculated for years past this
+    year_max = df['HydroYear'].max()
+    # Create empty list to append results
+    TrendResults = []
+    # Cycle through sites
+    for site in df['Site'].unique():
+        # Reduce dataset to be specfic to the chosern site
+        site_data = df[df['Site']==site]
+        # Cycle through the desired trend lengths
+        for trend_period in trend_periods:
+            # Cycle through the desired trend year. Note that the final year should never be greater than the current hydroyear
+            # and should not be considered if there has been no data collected from the site in the desired trend period
+            for year in set(final_year).intersection(set([x+i for i in range(trend_period) for x in site_data['HydroYear'].unique() if x+i<=year_max])):
+                # Cycle through the different sampling frequencies that exist in the trend data
+                for frequency in site_data.Frequency.unique():
+                    # Only consider data with the chosen frequency and within the trend period
+                    trend_data = site_data[(site_data['Frequency']==frequency)&(site_data['HydroYear']<=year)&(site_data['HydroYear']>(year-trend_period))][['HydroYear','Interval','Censor','Numeric']].copy()
+                    # Count the number of intervals that are represented by data
+                    count = len(trend_data)
+                    # Determine if there is enough data to run the trend analysis
+                    if (frequency == 'Monthly') & (count/(12*trend_period) < requirement):
+                        continue
+                    elif (frequency == 'Quarterly') & (count/(4*trend_period) < requirement):
+                        continue
+                    elif (frequency == 'Annual') & (count/trend_period < requirement):
+                        continue
+                    # If requirements are loose enough, ensure no trends are run if count is 2  or less
+                    if count <= 2:
+                        continue
+                    # Determine maximum detection limit and minimum quantification limit in the data
+                    max_DL = trend_data[trend_data['Censor']=='<']['Numeric'].max()
+                    min_QL = trend_data[trend_data['Censor']=='>']['Numeric'].min()
+                    # Convert data below the maximum detection limit
+                    if ~np.isnan(max_DL):
+                        trend_data['Numeric'] = np.where((trend_data['Censor']=='<')|(trend_data['Numeric']<max_DL),0.5*max_DL,trend_data['Numeric'])
+                    # Convert data above the minimum quantification limit
+                    if ~np.isnan(min_QL):
+                        trend_data['Numeric'] = np.where((trend_data['Censor']=='>')|(trend_data['Numeric']>min_QL),1.1*min_QL,trend_data['Numeric'])
+                    # Make the HydroYear categorical
+                    trend_data.HydroYear = pd.Categorical(trend_data.HydroYear,categories=[(year-trend_period+1)+i for i in range(trend_period)])
+                    # Make the Interval column categorical and set the trend line start data as the middle of first interval
+                    if frequency == 'Monthly':
+                        StartDate = pd.to_datetime(str(year-trend_period)+'0715')
+                        trend_data.Interval = pd.Categorical(trend_data.Interval,categories=[i+1 for i in range(12)])
+                    elif frequency == 'Quarterly':
+                        StartDate = pd.to_datetime(str(year-trend_period)+'0815')
+                        trend_data.Interval = pd.Categorical(trend_data.Interval,categories=[i+1 for i in range(4)])
+                    elif frequency == 'Annual':
+                        StartDate = pd.to_datetime(str(year-trend_period+1)+'0101')
+                    # Set each hydroyear and interval to have a value (np.nan for intervals without data)
+                    trend_data = trend_data.groupby(['HydroYear','Interval'])['Numeric'].first()
+                    # If annual frequency, don't run seasonal test
+                    if frequency == 'Annual':
+                        KWp = np.nan
+                    else:
+                        # See if data frequency allows for seasonality test
+                        try:
+                            if frequency == 'Monthly':
+                                KW = stats.kruskal(*[trend_data.loc[:,month].tolist() for month in range(1,13)],nan_policy='omit')
+                            elif frequency == 'Quarterly':
+                                KW = stats.kruskal(*[trend_data.loc[:,quarter].tolist() for quarter in range(1,5)],nan_policy='omit')
+                            KWp = KW.pvalue
+                        # Otherwise run test as non-seasonal
+                        except ValueError:
+                            KWp = np.nan
+                    # Determine seasonality from seasonal test pvalues
+                    if pd.isna(KWp):
+                        seasonality = 'Cannot assess - treated as non-seasonal'
+                    elif KWp <= 0.05:
+                        seasonality = 'Seasonal'
+                    else:
+                        seasonality = 'Non-seasonal'
+                    # Use seasonality to determine which Mann-Kendall test to perform
+                    if seasonality == 'Seasonal':
+                        if frequency == 'Monthly':
+                            MK = mk.seasonal_test(trend_data,period=12)
+                        elif frequency == 'Quarterly':
+                            MK = mk.seasonal_test(trend_data,period=4)
+                        TheilSlope = MK.slope
+                    else:
+                        MK = mk.original_test(trend_data)
+                        # If non-seasonal test used, multiply slope result by number of intervals within a year
+                        if frequency == 'Monthly':
+                            TheilSlope = MK.slope*12
+                        elif frequency == 'Quarterly':
+                            TheilSlope = MK.slope*4
+                        elif frequency == 'Annual':
+                            TheilSlope = MK.slope
+                    # Convert Mann-Kendall analysis results to a liklihood that the trend is decreasing
+                    if MK.s <= 0:
+                        Likelihood = 1 - 0.5*MK.p
+                    elif MK.s > 0:
+                        Likelihood = 0.5*MK.p
+                    # Convert the likelihood of a decreasing trend to a trend category
+                    if Likelihood >= 0.90:
+                        TrendResult = 'Very Likely Decreasing'
+                    elif Likelihood >= 0.67:
+                        TrendResult = 'Likely Decreasing'
+                    elif Likelihood > 0.33:
+                        TrendResult = 'Indeterminate'
+                    elif Likelihood > 0.10:
+                        TrendResult = 'Likely Increasing'
+                    elif Likelihood >= 0.0:
+                        TrendResult = 'Very Likely Increasing'
+                    # Report relevant data into a list and append to trend results list
+                    row_data = [site,year,trend_period,frequency,count,max_DL,min_QL,KWp,seasonality,MK.p,MK.z,MK.Tau,MK.s,MK.var_s,Likelihood,TrendResult,StartDate,MK.intercept,TheilSlope,pd.to_datetime('2035'),MK.intercept+TheilSlope*(pd.to_datetime('2035')-StartDate).days/365.25]
+                    TrendResults.append(row_data)
+    # Create DataFrame from results
+    Results_df = pd.DataFrame(TrendResults,columns=['Site','HydroYear','TrendLength','DataFrequency','Intervals','MaxDetectionLimit','MinQuantLimit','Seasonal_pvalue','Seasonality','MK_pvalue','MK_Zscore','MK_Tau','MK_S','MK_VarS','DecreasingLikelihood','TrendCategory','TrendLineStartDate','TrendLineStartValue','Slope','TrendLineEndDate','TrendLineEndValue'])
+    # Sort values by hydroyear, site, trend length, and data frequency
+    Results_df = Results_df.sort_values(by=['HydroYear','Site','TrendLength','DataFrequency'],ascending=True)
+    
+    return Results_df
+
+
 
 def annual_max(df):
     '''
@@ -406,11 +598,11 @@ def multiyear_percentile(df,percentile,years,frequency,requirements):
         With percentile values for each site/hydroyear
     '''
     
-    # Add Semester and Quarter indicator
-    df['Semester'] = np.where(df['Month']>=7,2,1)
-    df['Quarter'] = np.where(df['Month']>=10,4,
-                               np.where(df['Month']>=7,3,
-                            np.where(df['Month']>=4,2,1)))
+    # Add Semester and Quarter indicator relative to hydro year period
+    df['Semester'] = np.where(df['Month']>=7,1,2)
+    df['Quarter'] = np.where(df['Month']>=10,2,
+                               np.where(df['Month']>=7,1,
+                            np.where(df['Month']>=4,4,3)))
     # Every hydro year of data is used in the next 'years' hydroyears for the multiyear percentile
     # Create column to indicate which years should be included in a given hydroyear's indicator result
     df['IndicatorYear'] = df['HydroYear']

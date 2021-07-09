@@ -12,7 +12,8 @@ from hilltoppy import web_service as ws
 import pandas as pd
 import numpy as np
 import csv
-from Functions import hilltop_data,stacked_data,sample_freq,round_half_up,annual_max,grades,grade_check,reduce_to_monthly,multiyear_percentile
+import os
+from Functions import hilltop_data,stacked_data,sample_freq,round_half_up,annual_max,grades,grade_check,reduce_to_monthly,multiyear_percentile,trend_format,trends
 
 ##############################################################################
 '''
@@ -230,25 +231,64 @@ IndicatorResults_df = IndicatorResults_df.append(indicator_df)
 
 ##############################################################################
 '''
+Initiate Indicator Dataframe
+'''
+
+TrendData_df = pd.DataFrame(columns=['Site','Measurement','Units','HydroYear','Frequency','Interval','Censor','Numeric','Result'])
+TrendResults_df = pd.DataFrame(columns=['Site','Measurement','Units','HydroYear','TrendLength','DataFrequency','Intervals','MaxDetectionLimit','MinQuantLimit','Seasonal_pvalue','Seasonality','MK_pvalue','MK_Zscore','MK_Tau','MK_S','MK_VarS','DecreasingLikelihood','TrendCategory','TrendLineStartDate','TrendLineStartValue','Slope','TrendLineEndDate','TrendLineEndValue'])
+
+##############################################################################
+'''
+Nitrate Nitrogen Trends
+'''
+
+# Set measurement parameter
+measurement = 'Nitrate Nitrogen'
+# Use reduce_to_monthly function to generate monthly values dataframe
+indicator_df = reduce_to_monthly(StatsData_df[(StatsData_df['Measurement'] == measurement)].copy())
+# Use trend_format function to generate data format for trend analyses
+# using specified data frequency options
+trend_data_df = trend_format(indicator_df,['Annual','Quarterly','Monthly'])
+# Save units
+units = indicator_df['Units'][0]
+# Run trends() function for selected trend periods, hydroyears, and data requirement
+trend_results_df = trends(trend_data_df,[5,10,15,20],[2021],0.80)
+# Add measurement and units column in trend results table
+trend_results_df['Measurement'] = measurement
+trend_results_df['Units'] = units
+# Append the trend data and trend results to respective tables
+TrendData_df = TrendData_df.append(trend_data_df)      
+TrendResults_df = TrendResults_df.append(trend_results_df)
+
+##############################################################################
+'''
 Export the Results
 '''
 
 # Export results to Excel
-with pd.ExcelWriter('GW-IndicatorResults.xlsx') as writer:  
+with pd.ExcelWriter('GW-Results.xlsx') as writer:
     WQData_df.to_excel(writer, sheet_name='HilltopData',index=True)
     StatsData_df.to_excel(writer, sheet_name='CleanedData',index=False)
     Frequency_df.reset_index().to_excel(writer, sheet_name='SampleFrequency',index=False)
     Unstacked_df.reset_index().to_excel(writer, sheet_name='UnstackedFrequency',index=False)
     IndicatorResults_df.to_excel(writer, sheet_name='IndicatorResults',index=False)
+    TrendData_df.to_excel(writer, sheet_name='TrendData',index=False)
+    TrendResults_df.to_excel(writer, sheet_name='TrendResults',index=False)
 
 ##############################################################################
 '''
 Combine GW and SW indicator results
 '''
-GW_df = pd.read_excel('GW-IndicatorResults.xlsx',sheet_name='IndicatorResults')
-SW_df = pd.read_excel('SW-IndicatorResults.xlsx',sheet_name='IndicatorResults')
 
-df = pd.concat([GW_df,SW_df])
-df.to_excel('IndicatorResults.xlsx',sheet_name='IndicatorResults',index=False)
-
-
+# Check if SW results exist otherwise don't merge
+if os.path.isfile('SW-Results.xlsx'):
+    with pd.ExcelWriter('Results.xlsx') as writer:
+        # Only merge primary results in output
+        for sheet in ['IndicatorResults','TrendData','TrendResults']:
+            try:
+                GW_df = pd.read_excel('GW-Results.xlsx',sheet_name=sheet)
+                SW_df = pd.read_excel('SW-Results.xlsx',sheet_name=sheet)
+                df = pd.concat([GW_df,SW_df])
+                df.to_excel(writer,sheet_name=sheet,index=False)
+            except NameError:
+                continue
