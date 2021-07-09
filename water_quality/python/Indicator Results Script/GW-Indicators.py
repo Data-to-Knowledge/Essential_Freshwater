@@ -251,8 +251,8 @@ indicator_df = reduce_to_monthly(StatsData_df[(StatsData_df['Measurement'] == me
 trend_data_df = trend_format(indicator_df,['Annual','Quarterly','Monthly'])
 # Save units
 units = indicator_df['Units'][0]
-# Run trends() function for selected trend periods, hydroyears, and data requirement
-trend_results_df = trends(trend_data_df,[5,10,15,20],[2021],0.80)
+# Run trends() function for selected trend periods(5 to 30), hydroyears (2021), and data requirement (80%)
+trend_results_df = trends(trend_data_df,[i for i in range(5,31)],[2021],0.80)
 # Add measurement and units column in trend results table
 trend_results_df['Measurement'] = measurement
 trend_results_df['Units'] = units
@@ -291,4 +291,6 @@ if os.path.isfile('SW-Results.xlsx'):
                 df = pd.concat([GW_df,SW_df])
                 df.to_excel(writer,sheet_name=sheet,index=False)
             except NameError:
+                continue
+            except ValueError:
                 continue

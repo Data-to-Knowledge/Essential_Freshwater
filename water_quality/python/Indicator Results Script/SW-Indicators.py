@@ -486,3 +486,5 @@ if os.path.isfile('GW-Results.xlsx'):
                 df.to_excel(writer,sheet_name=sheet,index=False)
             except NameError:
                 continue
+            except ValueError:
+                continue
