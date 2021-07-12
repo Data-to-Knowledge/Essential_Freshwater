@@ -107,7 +107,7 @@ indicator_df = annual_max(StatsData_df[StatsData_df['Measurement']==measurement]
 # Define waterbody, indicator, and special considerations
 indicator_df['FreshwaterBodyType'] = 'Lakes'
 indicator_df['Indicator'] = 'Annual Maximum'
-indicator_df['SpecialConsiderations'] = 'Separate analysis for open/closed to sea periods'
+indicator_df['SpecialConsiderations'] = None
 # Set sample frequency as 'All' to indicate all samples are used
 indicator_df['Frequency'] = 'All'
 # Set bins for grades
@@ -137,7 +137,7 @@ indicator_df = annual_percentile(indicator_df,50)
 # Define waterbody, indicator, and special considerations
 indicator_df['FreshwaterBodyType'] = 'Lakes'
 indicator_df['Indicator'] = 'Annual Median'
-indicator_df['SpecialConsiderations'] = 'Separate analysis for open/closed to sea periods'
+indicator_df['SpecialConsiderations'] = None
 # Set sample frequency used to calculate median
 indicator_df['Frequency'] = 'Monthly'
 # Round median numeric result to nearest 0.1
@@ -184,7 +184,7 @@ indicator_df['Result'] = indicator_df['Censor'].fillna('')+indicator_df['Numeric
 # Copy data
 indicator_copy_df = indicator_df.copy()
 # Start with Seasonally stratified & brackish
-indicator_df['SpecialConsiderations'] = 'Seasonally stratified and brackish, separate analysis for open/closed to sea periods'
+indicator_df['SpecialConsiderations'] = 'Seasonally stratified and brackish'
 # Set bins for grades
 bins = [0,0.160,0.350,0.750,np.inf]
 # Use grades function to set grades and grade range
@@ -195,7 +195,7 @@ indicator_df = grade_check(indicator_df,monthly_df,bins,'Monthly')
 IndicatorResults_df = IndicatorResults_df.append(indicator_df)
 # Repeat for Polymictic
 indicator_df = indicator_copy_df.copy()
-indicator_df['SpecialConsiderations'] = 'Polymictic, separate analysis for open/closed to sea periods'
+indicator_df['SpecialConsiderations'] = 'Polymictic'
 # Set bins for grades
 bins = [0,0.300,0.500,0.800,np.inf]
 # Use grades function to set grades and grade range
@@ -223,7 +223,7 @@ indicator_df = annual_percentile(indicator_df,50)
 # Define waterbody, indicator, and special considerations
 indicator_df['FreshwaterBodyType'] = 'Lakes'
 indicator_df['Indicator'] = 'Annual Median'
-indicator_df['SpecialConsiderations'] = 'Separate analysis for open/closed to sea periods'
+indicator_df['SpecialConsiderations'] = None
 # Set sample frequency used to calculate median
 indicator_df['Frequency'] = 'Monthly'
 # Round median numeric result to nearest 0.001, reduced precision for higher concentrations
@@ -257,7 +257,7 @@ indicator_df = annual_max(StatsData_df[StatsData_df['Measurement']==measurement]
 # Define indicator and special considerations
 indicator_df['FreshwaterBodyType'] = 'Rivers'
 indicator_df['Indicator'] = 'Annual Maximum'
-indicator_df['SpecialConsiderations'] = 'pH 8 and 20C temp adjustment'
+indicator_df['SpecialConsiderations'] = None
 # Set sample frequency as 'All' to indicate all samples are used
 indicator_df['Frequency'] = 'All'
 # Set bins for grades
@@ -290,7 +290,7 @@ monthly_df = indicator_df[['Site','HydroYear','MonthCensor','MonthNumeric']].cop
 indicator_df = annual_percentile(indicator_df,50)
 # Define indicator and special considerations
 indicator_df['Indicator'] = 'Annual Median'
-indicator_df['SpecialConsiderations'] = 'pH 8 and 20C temp adjustment'
+indicator_df['SpecialConsiderations'] = None
 # Set sample frequency used to calculate median
 indicator_df['Frequency'] = 'Monthly'
 # Round median numeric result to nearest 0.001, reduced precision for higher concentrations
@@ -330,7 +330,7 @@ indicator_df = annual_percentile(indicator_df,50)
 # Define waterbody, indicator, and special considerations
 indicator_df['FreshwaterBodyType'] = 'Rivers'
 indicator_df['Indicator'] = 'Annual Median'
-indicator_df['SpecialConsiderations'] = 'Using NNN for NO3 indicator'
+indicator_df['SpecialConsiderations'] = None
 # Set sample frequency used to calculate median
 indicator_df['Frequency'] = 'Monthly'
 # Round median numeric result to nearest 0.0001, reduced precision for higher concentrations
@@ -367,7 +367,7 @@ indicator_df = annual_percentile(indicator_df,95)
 # Define waterbody, indicator, and special considerations
 indicator_df['FreshwaterBodyType'] = 'Rivers'
 indicator_df['Indicator'] = '95th Percentile'
-indicator_df['SpecialConsiderations'] = 'Using NNN for NO3 indicator'
+indicator_df['SpecialConsiderations'] = None
 # Set sample frequency used to calculate median
 indicator_df['Frequency'] = 'Monthly'
 # Round median numeric result to nearest 0.0001, reduced precision for higher concentrations
