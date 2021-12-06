@@ -115,7 +115,7 @@ bins = [0,10,25,60,np.inf]
 # Use grades function to set grades and grade range
 indicator_df = grades(indicator_df,bins)
 # Use  grade_check to adjust grade results for detected values
-indicator_df = grade_check(indicator_df,sample_df,bins,'All')
+#indicator_df = grade_check(indicator_df,sample_df,bins,'All')
 # Append to indicator results table
 IndicatorResults_df = IndicatorResults_df.append(indicator_df)
 
@@ -149,7 +149,7 @@ bins = [0,2,5,12,np.inf]
 # Use grades function to set grades and grade range
 indicator_df = grades(indicator_df,bins)
 # Use  grade_check to adjust grade results for detected values
-indicator_df = grade_check(indicator_df,monthly_df,bins,'Monthly')
+#indicator_df = grade_check(indicator_df,monthly_df,bins,'Monthly')
 # Append to indicator results table
 IndicatorResults_df = IndicatorResults_df.append(indicator_df)
 
@@ -190,7 +190,7 @@ bins = [0,0.160,0.350,0.750,np.inf]
 # Use grades function to set grades and grade range
 indicator_df = grades(indicator_df,bins)
 # Use  grade_check to adjust grade results for detected values
-indicator_df = grade_check(indicator_df,monthly_df,bins,'Monthly')
+#indicator_df = grade_check(indicator_df,monthly_df,bins,'Monthly')
 # Append to indicator results table
 IndicatorResults_df = IndicatorResults_df.append(indicator_df)
 # Repeat for Polymictic
@@ -201,7 +201,7 @@ bins = [0,0.300,0.500,0.800,np.inf]
 # Use grades function to set grades and grade range
 indicator_df = grades(indicator_df,bins)
 # Use  grade_check to adjust grade results for detected values
-indicator_df = grade_check(indicator_df,monthly_df,bins,'Monthly')
+#indicator_df = grade_check(indicator_df,monthly_df,bins,'Monthly')
 # Append to indicator results table
 IndicatorResults_df = IndicatorResults_df.append(indicator_df)
 
@@ -237,7 +237,7 @@ bins = [0,0.010,0.020,0.050,np.inf]
 # Use grades function to set grades and grade range
 indicator_df = grades(indicator_df,bins)
 # Use  grade_check to adjust grade results for detected values
-indicator_df = grade_check(indicator_df,monthly_df,bins,'Monthly')
+#indicator_df = grade_check(indicator_df,monthly_df,bins,'Monthly')
 # Append to indicator results table
 IndicatorResults_df = IndicatorResults_df.append(indicator_df)
 
@@ -265,7 +265,7 @@ bins = [0,0.05,0.40,2.20,np.inf]
 # Use grades function to set grades and grade range
 indicator_df = grades(indicator_df,bins)
 # Use  grade_check to adjust grade results for detected values
-indicator_df = grade_check(indicator_df,sample_df,bins,'All')
+#indicator_df = grade_check(indicator_df,sample_df,bins,'All')
 # Append twice for Lakes and Rivers
 for FWType in ['Rivers','Lakes']:
     # Set freshwater type
@@ -304,7 +304,7 @@ bins = [0,0.05,0.40,2.20,np.inf]
 # Use grades function to set grades and grade range
 indicator_df = grades(indicator_df,bins)
 # Use  grade_check to adjust grade results for detected values
-indicator_df = grade_check(indicator_df,monthly_df,bins,'Monthly')
+#indicator_df = grade_check(indicator_df,monthly_df,bins,'Monthly')
 # Append twice for Lakes and Rivers
 for FWType in ['Rivers','Lakes']:
     # Set freshwater type
@@ -345,7 +345,7 @@ bins = [0,1.0,2.4,6.9,np.inf]
 # Use grades function to set grades and grade range
 indicator_df = grades(indicator_df,bins)
 # Use  grade_check to adjust grade results for detected values
-indicator_df = grade_check(indicator_df,monthly_df,bins,'Monthly')
+#indicator_df = grade_check(indicator_df,monthly_df,bins,'Monthly')
 # Append to indicator results table
 IndicatorResults_df = IndicatorResults_df.append(indicator_df)
 
@@ -382,7 +382,7 @@ bins = [0,1.5,3.5,9.8,np.inf]
 # Use grades function to set grades and grade range
 indicator_df = grades(indicator_df,bins)
 # Use  grade_check to adjust grade results for detected values
-indicator_df = grade_check(indicator_df,monthly_df,bins,'Monthly')
+#indicator_df = grade_check(indicator_df,monthly_df,bins,'Monthly')
 # Append to indicator results table
 IndicatorResults_df = IndicatorResults_df.append(indicator_df)
 
@@ -417,7 +417,7 @@ bins = [0,0.006,0.010,0.018,np.inf]
 # Use grades function to set grades and grade range
 indicator_df = grades(indicator_df,bins)
 # Use  grade_check to adjust grade results for detected values
-indicator_df = grade_check(indicator_df,monthly_df,bins,'Monthly')
+#indicator_df = grade_check(indicator_df,monthly_df,bins,'Monthly')
 # Append to indicator results table
 IndicatorResults_df = IndicatorResults_df.append(indicator_df)
 
@@ -452,7 +452,7 @@ bins = [0,0.021,0.030,0.054,np.inf]
 # Use grades function to set grades and grade range
 indicator_df = grades(indicator_df,bins)
 # Use  grade_check to adjust grade results for detected values
-indicator_df = grade_check(indicator_df,monthly_df,bins,'Monthly')
+#indicator_df = grade_check(indicator_df,monthly_df,bins,'Monthly')
 # Append to indicator results table
 IndicatorResults_df = IndicatorResults_df.append(indicator_df)
 

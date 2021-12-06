@@ -276,7 +276,7 @@ def Hazen_percentile(df,percentile,group_columns,censor_column_in,numeric_column
     hazen_df['NumericContribution'] = np.where((((hazen_df['HazenRank']-hazen_df['Rank'])>0) & ((hazen_df['HazenRank']-hazen_df['Rank'])<1)),(1-(hazen_df['HazenRank']-hazen_df['Rank']))*hazen_df[numeric_column_in],hazen_df['NumericContribution'])
     # Define the contribution from the higher rank value
     hazen_df['CensorRankContribution'] = np.where((((hazen_df['Rank']-hazen_df['HazenRank'])>0) & ((hazen_df['Rank']-hazen_df['HazenRank'])<1)),hazen_df['CensorRank'],hazen_df['CensorRankContribution'])
-    hazen_df['NumericContribution'] = np.where((((hazen_df['Rank']-hazen_df['HazenRank'])>0) & ((hazen_df['Rank']-hazen_df['HazenRank'])<1)),(hazen_df['Rank']-hazen_df['HazenRank'])*hazen_df[numeric_column_in],hazen_df['NumericContribution'])
+    hazen_df['NumericContribution'] = np.where((((hazen_df['Rank']-hazen_df['HazenRank'])>0) & ((hazen_df['Rank']-hazen_df['HazenRank'])<1)),(1-(hazen_df['Rank']-hazen_df['HazenRank']))*hazen_df[numeric_column_in],hazen_df['NumericContribution'])
     # Sum the contributing values to create the Hazen percentile
     hazen_df = pd.merge(hazen_df,hazen_df.groupby(group_columns).sum(min_count=1)[['CensorRankContribution','NumericContribution']].rename(columns={'CensorRankContribution':'CensorRankOut','NumericContribution':numeric_column_out}),on=group_columns,how='outer')
     # Return appropriate censor value based on censor rank or sum of censor ranks from contributing values
